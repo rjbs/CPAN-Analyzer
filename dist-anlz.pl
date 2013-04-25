@@ -5,8 +5,9 @@ use Text::Table;
 use Analyze;
 
 my $result = Analyze->scan_file($ARGV[0]);
+my $agg    = $ARGV[1] // 50;
 
-Analyze->aggregate_minorities($result, 50);
+Analyze->aggregate_minorities($result, $agg);
 
 my $dz_results = $result->{'Dist::Zilla'};
 my $count   = @{ $dz_results->{distfiles} };
