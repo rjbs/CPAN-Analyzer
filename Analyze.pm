@@ -31,6 +31,7 @@ sub scan_file {
 
     my $gen = $hash{meta_gen_package};
     $gen = 'Dist::Zilla' if $gen =~ /Dist::Zilla/;
+    $gen = 'Dist::Zilla' if $gen eq 'Dist::Milla'; # cheating?
     my $tool = $tool{ $gen || $hash{meta_generator} } ||= {};
     $tool->{distfiles} ||= [];
     push @{ $tool->{distfiles} }, $hash{distfile};
