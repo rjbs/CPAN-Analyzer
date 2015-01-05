@@ -4,7 +4,7 @@ use Date::Format;
 use Text::CSV_XS;
 use YAML::Tiny;
 
-my $visitor = CPAN::Visitor->new(cpan => "/Users/rjbs/Dropbox/minicpan");
+my $visitor = CPAN::Visitor->new(cpan => "/Users/rjbs/Sync/minicpan");
 my $count   = $visitor->select;
 
 printf "preparing to scan %s files...\n", $count;
