@@ -1,5 +1,7 @@
 use 5.12.0;
 use warnings;
+use experimental 'postderef';
+use List::Util 'sum0';
 use Text::Table;
 
 use Analyze;
@@ -17,10 +19,16 @@ printf "There are %s dists by %s unique authors using Dist::Zilla.\n\n",
   $count,
   $authors;
 
-my $table = Text::Table->new('generator', \' | ', 'dists');
+my $table = Text::Table->new('generator', \' | ', 'dists', \' | ', '%');
 
-$table->add($_, scalar @{ $result->{$_}{distfiles} }) for
+my $total = sum0 map {; 0 + $_->{distfiles}->@* } values %$result;
+
+for my $key (
   sort { @{ $result->{$b}{distfiles} } <=> @{ $result->{$a}{distfiles} } }
-  keys %$result;
+  keys %$result
+) {
+  my $count = $result->{$key}{distfiles}->@*;
+  $table->add($key, $count, sprintf('%0.2f%%', $count/$total*100));
+}
 
 print $table;
