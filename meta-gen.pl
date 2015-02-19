@@ -1,7 +1,7 @@
 use 5.12.0;
 use CPAN::Visitor;
 use Date::Format;
-use Text::CSV_XS;
+use DBI;
 use YAML::Tiny;
 
 my $visitor = CPAN::Visitor->new(cpan => "/Users/rjbs/Sync/minicpan");
@@ -9,32 +9,38 @@ my $count   = $visitor->select;
 
 printf "preparing to scan %s files...\n", $count;
 
-my $csv   = Text::CSV_XS->new;
 my $total = 0;
 my @data;
 
-$csv->eol("\n");
+my $filename = sprintf('dist-%s.sqlite', time2str('%Y-%m-%d', time));
+my $dbh      = DBI->connect("dbi:SQLite:dbname=$filename", q{}, q{},
+                            { RaiseError => 1 });
 
-my $filename = sprintf('dist-%s.csv', time2str('%Y-%m-%d', time));
-open my $csv_fh, ">:encoding(utf8)", $filename or die "$filename: $!";
+$dbh->do("CREATE TABLE dists (
+  distfile PRIMARY KEY,
+  author,
+  has_meta_yml,
+  has_meta_json,
+  meta_spec,
+  meta_generator,
+  meta_gen_package,
+  meta_gen_version,
+  meta_license,
+  meta_error,
+  has_dist_ini
+)");
 
 my @cols = qw(
-  distfile
-  author
-  has_meta_yml has_meta_json meta_spec
-  meta_generator meta_gen_package meta_gen_version meta_license
-  meta_error
-  has_dist_ini
+  distfile author has_meta_yml has_meta_json meta_spec meta_generator
+  meta_gen_package meta_gen_version meta_license meta_error has_dist_ini
 );
-
-$csv->print($csv_fh, \@cols);
 
 my %template = map {; $_ => '' } @cols;
 
 $visitor->iterate(
+  jobs  => 10,
   visit => sub {
     my ($job) = @_;
-    $total++;
 
     my %dist = %template;
     $dist{has_meta_yml}  = -e 'META.yml'  ? 1 : 0;
@@ -68,10 +74,9 @@ $visitor->iterate(
       }
     }
 
-    $csv->print($csv_fh, [ @dist{ @cols } ]);
-    say "completed $total / $count";
+    my $hooks = join q{, }, ('?') x @cols;
+    $dbh->do("INSERT INTO dists VALUES ($hooks)", undef, @dist{@cols});
+    say "completed $dist{distfile}";
   }
 );
-
-close $csv_fh or die "error closing $filename: $!";
 
