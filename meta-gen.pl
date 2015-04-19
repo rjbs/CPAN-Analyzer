@@ -93,7 +93,7 @@ $visitor->iterate(
 
     if ($dist{has_meta_json}) {
       my $ok = eval { Parse::CPAN::Meta->load_file('META.json'); 1 };
-      $dist{meta_json_error} = "$@" || 1;
+      $dist{meta_json_error} = $ok ? ("$@" || '(unknown error)') : undef;
     }
 
     my $dbh = DBI->connect(
