@@ -45,7 +45,7 @@ my @cols = qw(
   has_dist_ini
 );
 
-my %template = map {; $_ => '' } @cols;
+my %template = map {; $_ => undef } @cols;
 
 $visitor->iterate(
   jobs  => 12,
