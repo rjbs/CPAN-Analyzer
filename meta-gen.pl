@@ -3,15 +3,10 @@ use CPAN::Visitor;
 use Date::Format;
 use DBI;
 use JSON;
+use Parallel::ForkManager;
 use Parse::CPAN::Meta;
-use YAML::Tiny;
-
-my $visitor = CPAN::Visitor->new(cpan => "/Users/rjbs/Sync/minicpan");
-my $count   = $visitor->select;
 
 my $JSON = JSON->new;
-
-printf "preparing to scan %s files...\n", $count;
 
 my $total = 0;
 my @data;
@@ -47,9 +42,37 @@ my @cols = qw(
 
 my %template = map {; $_ => undef } @cols;
 
-$visitor->iterate(
-  jobs  => 12,
-  visit => sub {
+my $pm = Parallel::ForkManager->new(26);
+
+for ('A' .. 'Z') {
+  $pm->start and next;
+
+  my $visitor = CPAN::Visitor->new(cpan => "/Users/rjbs/Sync/minicpan");
+  my $count   = $visitor->select(subtrees => [ $_ ]);
+
+  printf "$_: preparing to scan %s files...\n", $count;
+
+  my $dbh = DBI->connect(
+    "dbi:SQLite:dbname=$filename", q{}, q{},
+    { RaiseError => 1 },
+  );
+
+  $dbh->do("PRAGMA synchronous = OFF");
+
+  $visitor->iterate(
+    jobs     => 1,
+    visit => process_job($dbh),
+  );
+
+  $pm->finish;
+}
+
+$pm->wait_all_children;
+
+sub process_job {
+  my ($dbh) = @_;
+
+  return sub {
     my ($job) = @_;
 
     my %dist = %template;
@@ -77,15 +100,10 @@ $visitor->iterate(
       };
     }
 
-    my $dbh = DBI->connect(
-      "dbi:SQLite:dbname=$filename", q{}, q{},
-      { RaiseError => 1 },
-    );
     if (my $meta = $json_distmeta || $yaml_distmeta) {
       $dist{meta_spec} = eval { $meta->{'meta-spec'}{version} };
       $dist{meta_generator} = $meta->{generated_by};
 
-    $dbh->do("PRAGMA synchronous = OFF");
       if ($meta->{generated_by} =~ /\A(\S+) version ([^\s,]+)/) {
         $dist{meta_gen_package} = $1;
         $dist{meta_gen_version} = $2;
@@ -98,5 +116,4 @@ $visitor->iterate(
     $dbh->do("INSERT INTO dists VALUES ($hooks)", undef, @dist{@cols});
     say "completed $dist{distfile} (mtime $dist{mtime})";
   }
-);
-
+}
