@@ -62,41 +62,37 @@ $visitor->iterate(
     $dist{distfile} = $job->{distfile};
     ($dist{author}) = split m{/}, $job->{distfile};
 
+    my $json_distmeta;
+    my $yaml_distmeta;
+
     if ($dist{has_meta_yml}) {
-      my ($data) = eval {
-        my $out = YAML::Tiny->read('META.yml');
-        return $out->[0] if $out;
-        die YAML::Tiny->errstr;
+      $dist{meta_yml_error} = $@ || '(unknown error)' unless eval {
+        $yaml_distmeta = Parse::CPAN::Meta->load_file('META.yml'); 1;
       };
-
-      if ($data) {
-        $dist{meta_spec} = eval { $data->{'meta-spec'}{version} };
-        $dist{meta_generator} = $data->{generated_by};
-
-        if ($data->{generated_by} =~ /(\S+) version (\S+)/) {
-          $dist{meta_gen_package} = $1;
-          $dist{meta_gen_version} = $2;
-        }
-
-        $dist{meta_license} = $data->{license} // '';
-      } else {
-        my $error = $@;
-        ($error) = split m{$}m, $error;
-        $dist{meta_yml_error} = $error;
-      }
     }
 
     if ($dist{has_meta_json}) {
-      my $ok = eval { Parse::CPAN::Meta->load_file('META.json'); 1 };
-      $dist{meta_json_error} = $ok ? undef : ("$@" || '(unknown error)');
+      $dist{meta_json_error} = $@ || '(unknown error)' unless eval {
+        $json_distmeta = Parse::CPAN::Meta->load_file('META.json'); 1
+      };
     }
 
     my $dbh = DBI->connect(
       "dbi:SQLite:dbname=$filename", q{}, q{},
       { RaiseError => 1 },
     );
+    if (my $meta = $json_distmeta || $yaml_distmeta) {
+      $dist{meta_spec} = eval { $meta->{'meta-spec'}{version} };
+      $dist{meta_generator} = $meta->{generated_by};
 
     $dbh->do("PRAGMA synchronous = OFF");
+      if ($meta->{generated_by} =~ /\A(\S+) version ([^\s,]+)/) {
+        $dist{meta_gen_package} = $1;
+        $dist{meta_gen_version} = $2;
+      }
+
+      $dist{meta_license} = $meta->{license} // '';
+    }
 
     my $hooks = join q{, }, ('?') x @cols;
     $dbh->do("INSERT INTO dists VALUES ($hooks)", undef, @dist{@cols});
