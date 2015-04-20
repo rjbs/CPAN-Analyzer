@@ -57,12 +57,7 @@ $visitor->iterate(
     $dist{has_meta_json} = -e 'META.json' ? 1 : 0;
     $dist{has_dist_ini}  = -e 'dist.ini'  ? 1 : 0;
 
-    my $file = -e 'META.yml'    ? 'META.yml'
-             : -e 'META.json'   ? 'META.json'
-             : -e 'Makefile.PL' ? 'Makefile.PL'
-             : -e 'MANIFEST'    ? 'MANIFEST'
-             :                    'lib';
-    $dist{mtime} = (stat $file)[9];
+    $dist{mtime} = (stat $job->{distpath})[9];
 
     $dist{distfile} = $job->{distfile};
     ($dist{author}) = split m{/}, $job->{distfile};
