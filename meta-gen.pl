@@ -42,26 +42,30 @@ my @cols = qw(
 
 my %template = map {; $_ => undef } @cols;
 
-my $pm = Parallel::ForkManager->new(26);
+my $pm = Parallel::ForkManager->new(10);
 
-for ('A' .. 'Z') {
+my $visitor = CPAN::Visitor->new(cpan => "/Users/rjbs/Sync/minicpan");
+my $count   = $visitor->select;
+
+while (@{ $visitor->{files} }) {
+  my @next = splice @{ $visitor->{files} }, 0, 250;
+  printf "starting a child with %s elements; %s remain\n",
+    0+@next, 0+@{ $visitor->{files} };
+
   $pm->start and next;
 
-  my $visitor = CPAN::Visitor->new(cpan => "/Users/rjbs/Sync/minicpan");
-  my $count   = $visitor->select(subtrees => [ $_ ]);
-
-  printf "$_: preparing to scan %s files...\n", $count;
+  $visitor->{files} = \@next;
 
   my $dbh = DBI->connect(
     "dbi:SQLite:dbname=$filename", q{}, q{},
-    { RaiseError => 1 },
+    { RaiseError => 1, sqlite_use_immediate_transaction => 1 },
   );
 
   $dbh->do("PRAGMA synchronous = OFF");
 
   $visitor->iterate(
     jobs     => 1,
-    visit => process_job($dbh),
+    visit    => process_job($dbh),
   );
 
   $pm->finish;
@@ -114,6 +118,7 @@ sub process_job {
 
     my $hooks = join q{, }, ('?') x @cols;
     $dbh->do("INSERT INTO dists VALUES ($hooks)", undef, @dist{@cols});
-    say "completed $dist{distfile} (mtime $dist{mtime})";
+
+    printf "completed $dist{distfile}\n";
   }
 }
