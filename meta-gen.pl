@@ -1,11 +1,17 @@
 use 5.20.0;
 use experimental 'postderef';
+use CPAN::Meta;
 use CPAN::Visitor;
 use Date::Format;
 use DBI;
 use JSON;
 use Parallel::ForkManager;
 use Parse::CPAN::Meta;
+use Parse::CPAN::Packages::Fast;
+
+$SIG{__DIE__} = sub { die ">>>>>@_<<<<<<\n" };
+
+my $cpan_root = "/Users/rjbs/Sync/minicpan";
 
 my $JSON = JSON->new;
 
@@ -21,6 +27,7 @@ my $dbh      = DBI->connect("dbi:SQLite:dbname=$filename", q{}, q{},
 
 $dbh->do("CREATE TABLE dists (
   distfile PRIMARY KEY,
+  dist,
   author,
   mtime INTEGER,
   has_meta_yml,
@@ -32,12 +39,18 @@ $dbh->do("CREATE TABLE dists (
   meta_license,
   meta_yml_error,
   meta_json_error,
+  meta_struct_error,
   has_dist_ini
 )");
 
+$dbh->do(
+  "CREATE TABLE dist_prereqs (dist, phase, type, module, requirements, module_dist)",
+);
+
 my @cols = qw(
-  distfile author mtime has_meta_yml has_meta_json meta_spec meta_generator
-  meta_gen_package meta_gen_version meta_license meta_yml_error meta_json_error
+  distfile dist author mtime has_meta_yml has_meta_json meta_spec meta_generator
+  meta_gen_package meta_gen_version meta_license
+  meta_yml_error meta_json_error meta_struct_error
   has_dist_ini
 );
 
@@ -45,21 +58,41 @@ my %template = map {; $_ => undef } @cols;
 
 my $pm = Parallel::ForkManager->new(10);
 
-my $visitor = CPAN::Visitor->new(cpan => "/Users/rjbs/Sync/minicpan");
-my $count   = $visitor->select;
+$pm->run_on_finish(sub {
+  my ($pid, $exit_code, $ident) = @_;
+  die "pid $pid exited non-zero\n" if $exit_code;
+});
 
-while (@{ $visitor->{files} }) {
-  my @next = splice @{ $visitor->{files} }, 0, 250;
-  printf "starting a child with %s elements; %s remain\n",
-    0+@next, 0+@{ $visitor->{files} };
+my $index = Parse::CPAN::Packages::Fast->new(
+  "$cpan_root/modules/02packages.details.txt.gz"
+);
 
+my @dists = $index->latest_distributions;
+my $total = @dists;
+my %dist_object;
+
+while (my @next = splice @dists, 0, 250) {
   $pm->start and next;
 
-  $visitor->{files} = \@next;
+  my @files;
+
+  for my $item (@next) {
+    $dist_object{join '/', $item->cpanid, $item->filename} = $item;
+    push @files, $item->pathname =~ s/^.....//r;
+  }
+
+  my $visitor = CPAN::Visitor->new(
+    cpan  => $cpan_root,
+    files => \@files,
+    stash => { prefer_bin => 1 },
+  );
+
+  printf "starting a child with %s elements; %s remain\n",
+    0+@next, 0+@dists;
 
   my $dbh = DBI->connect(
     "dbi:SQLite:dbname=$filename", q{}, q{},
-    { RaiseError => 1, sqlite_use_immediate_transaction => 1 },
+    { RaiseError => 1 },
   );
 
   $dbh->do("PRAGMA synchronous = OFF");
@@ -67,6 +100,14 @@ while (@{ $visitor->{files} }) {
   $visitor->iterate(
     jobs     => 1,
     visit    => process_job($dbh),
+    check    => sub { return -e $_[0]->{distpath} },
+    enter    => sub {
+      my ($job) = @_;
+      my $dir = $job->{result}{extract};
+      my $perm = (stat $dir)[2] & 07777;
+      chmod($perm | 0100, $dir) unless $perm & 0100;
+      goto &CPAN::Visitor::_enter;
+    },
   );
 
   $pm->finish;
@@ -80,46 +121,72 @@ sub process_job {
   return sub {
     my ($job) = @_;
 
-    my %dist = %template;
-    $dist{has_meta_yml}  = -e 'META.yml'  ? 1 : 0;
-    $dist{has_meta_json} = -e 'META.json' ? 1 : 0;
-    $dist{has_dist_ini}  = -e 'dist.ini'  ? 1 : 0;
+    my %report = %template;
+    my $dist = $dist_object{ $job->{distfile} };
 
-    $dist{mtime} = (stat $job->{distpath})[9];
+    $report{dist} = $dist->dist;
 
-    $dist{distfile} = $job->{distfile};
-    ($dist{author}) = split m{/}, $job->{distfile};
+    $report{distfile} = $job->{distfile};
+    ($report{author}) = split m{/}, $job->{distfile};
+
+    $report{has_meta_yml}  = -e 'META.yml'  ? 1 : 0;
+    $report{has_meta_json} = -e 'META.json' ? 1 : 0;
+    $report{has_dist_ini}  = -e 'dist.ini'  ? 1 : 0;
+
+    $report{mtime} = (stat $job->{distpath})[9];
 
     my $json_distmeta;
     my $yaml_distmeta;
 
-    if ($dist{has_meta_yml}) {
-      $dist{meta_yml_error} = $@ || '(unknown error)' unless eval {
+    if ($report{has_meta_yml}) {
+      $report{meta_yml_error} = $@ || '(unknown error)' unless eval {
         $yaml_distmeta = Parse::CPAN::Meta->load_file('META.yml'); 1;
       };
     }
 
-    if ($dist{has_meta_json}) {
-      $dist{meta_json_error} = $@ || '(unknown error)' unless eval {
+    if ($report{has_meta_json}) {
+      $report{meta_json_error} = $@ || '(unknown error)' unless eval {
         $json_distmeta = Parse::CPAN::Meta->load_file('META.json'); 1
       };
     }
 
     if (my $meta = $json_distmeta || $yaml_distmeta) {
-      $dist{meta_spec} = eval { $meta->{'meta-spec'}{version} };
-      $dist{meta_generator} = $meta->{generated_by};
+      $report{meta_spec} = eval { $meta->{'meta-spec'}{version} };
+      $report{meta_generator} = $meta->{generated_by};
 
       if ($meta->{generated_by} =~ /\A(\S+) version ([^\s,]+)/) {
-        $dist{meta_gen_package} = $1;
-        $dist{meta_gen_version} = $2;
+        $report{meta_gen_package} = $1;
+        $report{meta_gen_version} = $2;
       }
 
-      $dist{meta_license} = $meta->{license} // '';
+      $report{meta_license} = $meta->{license} // '';
+
+      my $meta_obj;
+      $report{meta_struct_error} = $@ || '(unknown error)' unless eval {
+        $meta_obj = CPAN::Meta->new($meta);
+      };
+
+      if ($meta_obj) {
+        my $prereqs = $meta_obj->effective_prereqs->as_string_hash;
+        for my $phase (keys $prereqs->%*) {
+          for my $type (keys $prereqs->{$phase}->%*) {
+            for my $module (keys $prereqs->{$phase}{$type}->%*) {
+              $dbh->do(
+                "INSERT INTO dist_prereqs (dist, phase, type, module, requirements, module_dist)
+                VALUES (?, ?, ?, ?, ?, ?)",
+                undef,
+                $dist->dist, $phase, $type, $module, $prereqs->{$phase}{$type}{$module},
+                CPAN::DistnameInfo->new($index->{pkg_to_dist}{$module})->dist,
+              );
+            }
+          }
+        }
+      }
     }
 
     my $hooks = join q{, }, ('?') x @cols;
-    $dbh->do("INSERT INTO dists VALUES ($hooks)", undef, @dist{@cols});
+    $dbh->do("INSERT INTO dists VALUES ($hooks)", undef, @report{@cols});
 
-    printf "completed $dist{distfile}\n";
+    # printf "completed $report{distfile}\n";
   }
 }
