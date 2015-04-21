@@ -71,6 +71,10 @@ my @dists = $index->latest_distributions;
 my $total = @dists;
 my %dist_object;
 
+my %dist_for_pkg = $index->{pkg_to_dist}->%*;
+$dist_for_pkg{$_} = CPAN::DistnameInfo->new($dist_for_pkg{$_})->dist
+  for keys %dist_for_pkg;
+
 while (my @next = splice @dists, 0, 250) {
   $pm->start and next;
 
@@ -176,7 +180,7 @@ sub process_job {
                 VALUES (?, ?, ?, ?, ?, ?)",
                 undef,
                 $dist->dist, $phase, $type, $module, $prereqs->{$phase}{$type}{$module},
-                CPAN::DistnameInfo->new($index->{pkg_to_dist}{$module})->dist,
+                $dist_for_pkg{$module},
               );
             }
           }
