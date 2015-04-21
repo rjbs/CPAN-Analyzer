@@ -1,4 +1,5 @@
-use 5.12.0;
+use 5.20.0;
+use experimental 'postderef';
 use CPAN::Visitor;
 use Date::Format;
 use DBI;
