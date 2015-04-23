@@ -7,8 +7,10 @@ my $size_arg = $size * 2048;
 my $type = q{Case-sensitive Journaled HFS+};
 my $name = sprintf "ramdisk-%s-%06u", $^T, $$;
 my $dev  = `hdiutil attach -nomount ram://$size_arg`;
-chomp $dev;
 
-print "creating /Volumes/$name\n";
+chomp $dev;
+$dev =~ s/\s+\z//;
+
+print "creating /Volumes/$name on $dev\n";
 
 exec { 'diskutil' } qw(diskutil eraseVolume), $type, $name, $dev;
