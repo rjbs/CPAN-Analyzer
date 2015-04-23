@@ -28,7 +28,7 @@ my $dbh      = DBI->connect("dbi:SQLite:dbname=$filename", q{}, q{},
 $dbh->do("CREATE TABLE dists (
   distfile PRIMARY KEY,
   dist,
-  author,
+  cpanid,
   mtime INTEGER,
   has_meta_yml,
   has_meta_json,
@@ -131,7 +131,7 @@ sub process_job {
     $report{dist} = $dist->dist;
 
     $report{distfile} = $job->{distfile};
-    ($report{author}) = split m{/}, $job->{distfile};
+    ($report{cpanid}) = split m{/}, $job->{distfile};
 
     $report{has_meta_yml}  = -e 'META.yml'  ? 1 : 0;
     $report{has_meta_json} = -e 'META.json' ? 1 : 0;
