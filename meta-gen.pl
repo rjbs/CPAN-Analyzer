@@ -173,6 +173,8 @@ sub process_job {
       }
 
       $report{meta_license} = $meta->{license} // '';
+      $report{meta_license} = join q{, }, $report{meta_license}->@*
+        if ref $report{meta_license};
 
       my $meta_obj;
       $report{meta_struct_error} = $@ || '(unknown error)' unless eval {
