@@ -7,6 +7,15 @@ use DBI;
 use Text::CSV_XS;
 use Text::Table;
 
+sub scan_file {
+  my ($self, $filename) = @_;
+
+  my $method = $filename =~ /\.csv\z/     ? 'scan_csv'
+             : $filename =~ /\.sqlite\z/  ? 'scan_db'
+             :  die "unknown file type\n";
+  my $result = $self->$method($filename);
+}
+
 sub scan_db {
   my ($self, $filename) = @_;
 
@@ -22,27 +31,18 @@ sub scan_db {
     has_dist_ini
   );
 
-  my %tool;
-
   my $sth = $dbh->prepare("SELECT * FROM dists");
   $sth->execute;
 
-  while (my $row = $sth->fetchrow_hashref) {
+  return $self->_process_iterator(sub {
+    return unless my $row = $sth->fetchrow_hashref;
     my %hash;
     @hash{ @cols } = $row->@{ @cols };
-
-    my $gen = $hash{meta_gen_package} // '';
-    $gen = 'Dist::Zilla' if $gen =~ /Dist::Zilla/;
-    my $tool = $tool{ $gen // $hash{meta_generator} // '' } ||= {};
-    $tool->{distfiles} ||= [];
-    push @{ $tool->{distfiles} }, $hash{distfile};
-    $tool->{cpanid}{ $hash{cpanid} }++;
-  }
-
-  return \%tool;
+    return \%hash;
+  });
 }
 
-sub scan_file {
+sub scan_csv {
   my ($self, $filename) = @_;
 
   my $csv = Text::CSV_XS->new;
@@ -61,17 +61,28 @@ sub scan_file {
 
   { my $headers = $csv->getline($fh) }
 
-  while (my $row = $csv->getline($fh)) {
+  return $self->_process_iterator(sub {
+    return unless my $row = $csv->getline($fh);
     my %hash;
     @hash{ @cols } = @$row;
+    return \%hash;
+  });
+}
 
-    my $gen = $hash{meta_gen_package};
-    $gen = 'Dist::Zilla' if $gen =~ /Dist::Zilla/;
-    $gen = 'Dist::Zilla' if $gen eq 'Dist::Milla'; # cheating?
-    my $tool = $tool{ $gen || $hash{meta_generator} } ||= {};
+sub _process_iterator {
+  my ($self, $iterator) = @_;
+
+  my %tool;
+
+  while (my $row = $iterator->()) {
+    my $gen = $row->{meta_gen_package} // $row->{meta_generator} // '';
+    $gen = 'Dist::Zilla' if $gen =~ /\ADist::Zilla./;
+
+    my $tool = $tool{ $gen } ||= {};
     $tool->{distfiles} ||= [];
-    push @{ $tool->{distfiles} }, $hash{distfile};
-    $tool->{cpanid}{ $hash{cpanid} }++;
+    push @{ $tool->{distfiles} }, $row->{distfile};
+
+    $tool->{cpanid}{ $row->{cpanid} }++;
   }
 
   return \%tool;

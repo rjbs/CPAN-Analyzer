@@ -7,23 +7,20 @@ use Text::Table;
 use Analyze;
 
 my $file   = $ARGV[0];
-my $method = $file =~ /\.csv\z/     ? 'scan_file'
-           : $file =~ /\.sqlite\z/  ? 'scan_db'
-           :  die "unknown file type\n";
-my $result = Analyze->$method($ARGV[0]);
+my $result = Analyze->scan_file($file);
 my $agg    = $ARGV[1] // 50;
 
 Analyze->aggregate_minorities($result, $agg);
 
 my $dz_results = $result->{'Dist::Zilla'};
 my $count      = $dz_results->{distfiles}->@*;
-my $authors    = keys $dz_results->{author}->%*;
+my $cpanids    = keys $dz_results->{cpanid}->%*;
 
-printf "There are %s dists by %s unique authors using Dist::Zilla.\n\n",
+printf "There are %s dists by %s unique cpan ids using Dist::Zilla.\n\n",
   $count,
-  $authors;
+  $cpanids;
 
-my $table = Text::Table->new('generator', \' | ', 'dists', \' | ', '%');
+my $table = Text::Table->new('generator', \' | ', 'dists', \' | ', \' | ', 'authors', '%');
 
 my $total = sum0 map {; 0 + $_->{distfiles}->@* } values %$result;
 
@@ -32,7 +29,12 @@ for my $key (
   keys %$result
 ) {
   my $count = $result->{$key}{distfiles}->@*;
-  $table->add($key, $count, sprintf('%0.2f%%', $count/$total*100));
+  $table->add(
+    $key,
+    $count,
+    scalar(keys $result->{$key}{cpanid}->%*),
+    sprintf('%0.2f%%', $count/$total*100),
+  );
 }
 
 print $table;
