@@ -16,7 +16,7 @@ sub new {
     and die "couldn't create fs on $dev: " . Process::Status->as_string;
 
   my $guts = {
-    root => $name,
+    root => "/Volumes/$name",
     size => $mb,
     dev  => $dev,
     pid  => $$,
