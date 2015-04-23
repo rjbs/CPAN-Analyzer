@@ -9,15 +9,17 @@ use JSON;
 use Parallel::ForkManager;
 use Parse::CPAN::Meta;
 use Parse::CPAN::Packages::Fast;
+use Ramdisk;
 
 my ($opt, $desc) = describe_options(
   '%c %o',
-  [ 'tempdir=s', "an alternate tempdir to use for extractions" ],
+  [ 'ramdisk', "make a ramdisk to which to extract" ],
 );
 
 my $cpan_root = "/Users/rjbs/Sync/minicpan";
 
-$opt->tempdir && (local $ENV{TMPDIR} = $opt->tempdir);
+my $ramdisk = $opt->ramdisk ? Ramdisk->new(1024) : undef;
+$ramdisk && (local $ENV{TMPDIR} = $ramdisk);
 
 my $JSON = JSON->new;
 
