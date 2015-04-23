@@ -4,12 +4,20 @@ use CPAN::Meta;
 use CPAN::Visitor;
 use Date::Format;
 use DBI;
+use Getopt::Long::Descriptive;
 use JSON;
 use Parallel::ForkManager;
 use Parse::CPAN::Meta;
 use Parse::CPAN::Packages::Fast;
 
+my ($opt, $desc) = describe_options(
+  '%c %o',
+  [ 'tempdir=s', "an alternate tempdir to use for extractions" ],
+);
+
 my $cpan_root = "/Users/rjbs/Sync/minicpan";
+
+$opt->tempdir && (local $ENV{TMPDIR} = $opt->tempdir);
 
 my $JSON = JSON->new;
 
