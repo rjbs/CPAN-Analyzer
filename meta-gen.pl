@@ -38,7 +38,9 @@ $dbh->do("CREATE TABLE dists (
   meta_gen_version,
   meta_license,
   meta_yml_error,
+  meta_yml_backend,
   meta_json_error,
+  meta_json_backend,
   meta_struct_error,
   has_dist_ini
 )");
@@ -48,9 +50,10 @@ $dbh->do(
 );
 
 my @cols = qw(
-  distfile dist author mtime has_meta_yml has_meta_json meta_spec meta_generator
+  distfile dist cpanid mtime has_meta_yml has_meta_json meta_spec meta_generator
   meta_gen_package meta_gen_version meta_license
-  meta_yml_error meta_json_error meta_struct_error
+  meta_yml_error meta_yml_backend meta_json_error meta_yml_backend
+  meta_struct_error
   has_dist_ini
 );
 
@@ -146,12 +149,18 @@ sub process_job {
       $report{meta_yml_error} = $@ || '(unknown error)' unless eval {
         $yaml_distmeta = Parse::CPAN::Meta->load_file('META.yml'); 1;
       };
+
+      $report{meta_yml_backend} = $yaml_distmeta->{x_serialization_backend}
+        if $yaml_distmeta;
     }
 
     if ($report{has_meta_json}) {
       $report{meta_json_error} = $@ || '(unknown error)' unless eval {
         $json_distmeta = Parse::CPAN::Meta->load_file('META.json'); 1
       };
+
+      $report{meta_json_backend} = $json_distmeta->{x_serialization_backend}
+        if $json_distmeta;
     }
 
     if (my $meta = $json_distmeta || $yaml_distmeta) {
