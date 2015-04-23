@@ -72,6 +72,7 @@ my @dists = $index->latest_distributions;
 my $total = @dists;
 my %dist_object;
 
+# XXX: Violating encapsulation here!
 my %dist_for_pkg = $index->{pkg_to_dist}->%*;
 $dist_for_pkg{$_} = CPAN::DistnameInfo->new($dist_for_pkg{$_})->dist
   for keys %dist_for_pkg;
@@ -111,6 +112,7 @@ while (my @next = splice @dists, 0, 250) {
       my $dir = $job->{result}{extract};
       my $perm = (stat $dir)[2] & 07777;
       chmod($perm | 0100, $dir) unless $perm & 0100;
+      # XXX: Violating encapsulation here!
       goto &CPAN::Visitor::_enter;
     },
   );
