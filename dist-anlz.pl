@@ -6,7 +6,11 @@ use Text::Table;
 
 use Analyze;
 
-my $result = Analyze->scan_file($ARGV[0]);
+my $file   = $ARGV[0];
+my $method = $file =~ /\.csv\z/     ? 'scan_file'
+           : $file =~ /\.sqlite\z/  ? 'scan_db'
+           :  die "unknown file type\n";
+my $result = Analyze->$method($ARGV[0]);
 my $agg    = $ARGV[1] // 50;
 
 Analyze->aggregate_minorities($result, $agg);

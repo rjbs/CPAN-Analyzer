@@ -1,10 +1,47 @@
-use 5.12.0;
+use 5.20.0;
 use warnings;
+use experimental 'postderef';
 package Analyze;
 
-use Moose::Autobox;
+use DBI;
 use Text::CSV_XS;
 use Text::Table;
+
+sub scan_db {
+  my ($self, $filename) = @_;
+
+  my $dsn = "dbi:SQLite:dbname=$filename";
+  my $dbh = DBI->connect($dsn, undef, undef);
+
+  my @cols = qw(
+    distfile
+    cpanid
+    has_meta_yml has_meta_json meta_spec
+    meta_generator meta_gen_package meta_gen_version meta_license
+    meta_error
+    has_dist_ini
+  );
+
+  my %tool;
+
+  my $sth = $dbh->prepare("SELECT * FROM dists");
+  $sth->execute;
+
+  while (my $row = $sth->fetchrow_hashref) {
+    my %hash;
+    @hash{ @cols } = $row->@{ @cols };
+
+    my $gen = $hash{meta_gen_package} // '';
+    $gen = 'Dist::Zilla' if $gen =~ /Dist::Zilla/;
+    $gen = 'Dist::Zilla' if $gen eq 'Dist::Milla'; # cheating?
+    my $tool = $tool{ $gen // $hash{meta_generator} // '' } ||= {};
+    $tool->{distfiles} ||= [];
+    push @{ $tool->{distfiles} }, $hash{distfile};
+    $tool->{cpanid}{ $hash{cpanid} }++;
+  }
+
+  return \%tool;
+}
 
 sub scan_file {
   my ($self, $filename) = @_;
@@ -14,7 +51,7 @@ sub scan_file {
 
   my @cols = qw(
     distfile
-    author
+    cpanid
     has_meta_yml has_meta_json meta_spec
     meta_generator meta_gen_package meta_gen_version meta_license
     meta_error
@@ -35,7 +72,7 @@ sub scan_file {
     my $tool = $tool{ $gen || $hash{meta_generator} } ||= {};
     $tool->{distfiles} ||= [];
     push @{ $tool->{distfiles} }, $hash{distfile};
-    $tool->{author}{ $hash{author} }++;
+    $tool->{cpanid}{ $hash{cpanid} }++;
   }
 
   return \%tool;
@@ -45,17 +82,20 @@ sub aggregate_minorities {
   my ($self, $input, $min_size) = @_;
 
   my %minority = (
-    author    => {},
+    cpanid    => {},
     distfiles => [],
   );
 
   for my $key (keys %$input) {
-    next if $input->{ $key }{distfiles}->length >= $min_size;
+    next if $input->{ $key }{distfiles}->@* >= $min_size;
 
     my $this = delete $input->{ $key };
 
-    $this->{author}->each(sub { $minority{author}{$_[0]} += $_[1] });
-    $minority{distfiles}->push( $this->{distfiles}->flatten );
+    for my $cpanid (keys $this->{cpanid}->%*) {
+      $minority{cpanid}{ $cpanid } += $this->{cpanid}{$cpanid};
+    }
+
+    push $minority{distfiles}->@*, $this->{distfiles}->@*;
   }
 
   $input->{__OTHER__} = \%minority;
