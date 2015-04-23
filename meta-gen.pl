@@ -19,7 +19,7 @@ my ($opt, $desc) = describe_options(
 my $cpan_root = "/Users/rjbs/Sync/minicpan";
 
 my $ramdisk = $opt->ramdisk ? Ramdisk->new(1024) : undef;
-$ramdisk && (local $ENV{TMPDIR} = $ramdisk);
+$ramdisk && (local $ENV{TMPDIR} = $ramdisk->root);
 
 my $JSON = JSON->new;
 
