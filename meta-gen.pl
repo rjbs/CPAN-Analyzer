@@ -9,8 +9,6 @@ use Parallel::ForkManager;
 use Parse::CPAN::Meta;
 use Parse::CPAN::Packages::Fast;
 
-$SIG{__DIE__} = sub { die ">>>>>@_<<<<<<\n" };
-
 my $cpan_root = "/Users/rjbs/Sync/minicpan";
 
 my $JSON = JSON->new;
