@@ -19,6 +19,7 @@ sub new {
     root => $name,
     size => $mb,
     dev  => $dev,
+    pid  => $$,
   };
 
   return bless $guts, $class;
@@ -29,6 +30,7 @@ sub size { $_[0]{size} }
 sub dev  { $_[0]{dev}  }
 
 sub DESTROY {
+  return unless $$ == $_[0]{pid};
   system(qw(diskutil eject), $_[0]->dev)
     and warn "couldn't unmount $_[0]{root}: " . Process::Status->as_string;
 }
