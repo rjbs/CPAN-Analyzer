@@ -109,7 +109,12 @@ sub analyze_cpan {
 
     $visitor->iterate(
       jobs     => 1,
-      visit    => process_job($dbh),
+      visit    => process_job($dbh, {
+        cols         => \@cols,
+        dist_object  => \%dist_object,
+        dist_for_pkg => \%dist_for_pkg,
+        template     => \%template,
+      }),
       check    => sub { return -e $_[0]->{distpath} },
       enter    => sub {
         my ($job) = @_;
@@ -125,89 +130,89 @@ sub analyze_cpan {
   }
 
   $pm->wait_all_children;
+}
 
-  sub process_job {
-    my ($dbh) = @_;
+sub process_job {
+  my ($dbh, $state) = @_;
 
-    return sub {
-      my ($job) = @_;
+  return sub {
+    my ($job) = @_;
 
-      my %report = %template;
-      my $dist = $dist_object{ $job->{distfile} };
+    my %report = $state->{template}->%*;
+    my $dist = $state->{dist_object}{ $job->{distfile} };
 
-      $report{dist} = $dist->dist;
+    $report{dist} = $dist->dist;
 
-      $report{distfile} = $job->{distfile};
-      ($report{cpanid}) = split m{/}, $job->{distfile};
+    $report{distfile} = $job->{distfile};
+    ($report{cpanid}) = split m{/}, $job->{distfile};
 
-      $report{has_meta_yml}  = -e 'META.yml'  ? 1 : 0;
-      $report{has_meta_json} = -e 'META.json' ? 1 : 0;
-      $report{has_dist_ini}  = -e 'dist.ini'  ? 1 : 0;
+    $report{has_meta_yml}  = -e 'META.yml'  ? 1 : 0;
+    $report{has_meta_json} = -e 'META.json' ? 1 : 0;
+    $report{has_dist_ini}  = -e 'dist.ini'  ? 1 : 0;
 
-      $report{mtime} = (stat $job->{distpath})[9];
+    $report{mtime} = (stat $job->{distpath})[9];
 
-      my $json_distmeta;
-      my $yaml_distmeta;
+    my $json_distmeta;
+    my $yaml_distmeta;
 
-      if ($report{has_meta_yml}) {
-        $report{meta_yml_error} = $@ || '(unknown error)' unless eval {
-          $yaml_distmeta = Parse::CPAN::Meta->load_file('META.yml'); 1;
-        };
+    if ($report{has_meta_yml}) {
+      $report{meta_yml_error} = $@ || '(unknown error)' unless eval {
+        $yaml_distmeta = Parse::CPAN::Meta->load_file('META.yml'); 1;
+      };
 
-        $report{meta_yml_backend} = $yaml_distmeta->{x_serialization_backend}
-          if $yaml_distmeta;
+      $report{meta_yml_backend} = $yaml_distmeta->{x_serialization_backend}
+        if $yaml_distmeta;
+    }
+
+    if ($report{has_meta_json}) {
+      $report{meta_json_error} = $@ || '(unknown error)' unless eval {
+        $json_distmeta = Parse::CPAN::Meta->load_file('META.json'); 1
+      };
+
+      $report{meta_json_backend} = $json_distmeta->{x_serialization_backend}
+        if $json_distmeta;
+    }
+
+    if (my $meta = $json_distmeta || $yaml_distmeta) {
+      $report{meta_spec} = eval { $meta->{'meta-spec'}{version} };
+      $report{meta_generator} = $meta->{generated_by};
+
+      if (($meta->{generated_by}//'') =~ /\A(\S+) version ([^\s,]+)/) {
+        $report{meta_gen_package} = $1;
+        $report{meta_gen_version} = $2;
       }
 
-      if ($report{has_meta_json}) {
-        $report{meta_json_error} = $@ || '(unknown error)' unless eval {
-          $json_distmeta = Parse::CPAN::Meta->load_file('META.json'); 1
-        };
+      $report{meta_license} = $meta->{license} // '';
+      $report{meta_license} = join q{, }, $report{meta_license}->@*
+        if ref $report{meta_license};
 
-        $report{meta_json_backend} = $json_distmeta->{x_serialization_backend}
-          if $json_distmeta;
-      }
+      my $meta_obj;
+      $report{meta_struct_error} = $@ || '(unknown error)' unless eval {
+        $meta_obj = CPAN::Meta->new($meta);
+      };
 
-      if (my $meta = $json_distmeta || $yaml_distmeta) {
-        $report{meta_spec} = eval { $meta->{'meta-spec'}{version} };
-        $report{meta_generator} = $meta->{generated_by};
-
-        if (($meta->{generated_by}//'') =~ /\A(\S+) version ([^\s,]+)/) {
-          $report{meta_gen_package} = $1;
-          $report{meta_gen_version} = $2;
-        }
-
-        $report{meta_license} = $meta->{license} // '';
-        $report{meta_license} = join q{, }, $report{meta_license}->@*
-          if ref $report{meta_license};
-
-        my $meta_obj;
-        $report{meta_struct_error} = $@ || '(unknown error)' unless eval {
-          $meta_obj = CPAN::Meta->new($meta);
-        };
-
-        if ($meta_obj) {
-          my $prereqs = $meta_obj->effective_prereqs->as_string_hash;
-          for my $phase (keys $prereqs->%*) {
-            for my $type (keys $prereqs->{$phase}->%*) {
-              for my $module (keys $prereqs->{$phase}{$type}->%*) {
-                $dbh->do(
-                  "INSERT INTO dist_prereqs (dist, phase, type, module, requirements, module_dist)
-                  VALUES (?, ?, ?, ?, ?, ?)",
-                  undef,
-                  $dist->dist, $phase, $type, $module, $prereqs->{$phase}{$type}{$module},
-                  $dist_for_pkg{$module},
-                );
-              }
+      if ($meta_obj) {
+        my $prereqs = $meta_obj->effective_prereqs->as_string_hash;
+        for my $phase (keys $prereqs->%*) {
+          for my $type (keys $prereqs->{$phase}->%*) {
+            for my $module (keys $prereqs->{$phase}{$type}->%*) {
+              $dbh->do(
+                "INSERT INTO dist_prereqs (dist, phase, type, module, requirements, module_dist)
+                VALUES (?, ?, ?, ?, ?, ?)",
+                undef,
+                $dist->dist, $phase, $type, $module, $prereqs->{$phase}{$type}{$module},
+                $state->{dist_for_pkg}{$module},
+              );
             }
           }
         }
       }
-
-      my $hooks = join q{, }, ('?') x @cols;
-      $dbh->do("INSERT INTO dists VALUES ($hooks)", undef, @report{@cols});
-
-      # printf "completed $report{distfile}\n";
     }
+
+    my $hooks = join q{, }, ('?') x $state->{cols}->@*;
+    $dbh->do("INSERT INTO dists VALUES ($hooks)", undef, @report{ $state->{cols}->@* });
+
+    # printf "completed $report{distfile}\n";
   }
 }
 
