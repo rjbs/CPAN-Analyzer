@@ -13,8 +13,8 @@ my $chart = Chart::Clicker->new; # build the chart
 my @keys;
 my %series;
 
-for my $file (glob('*.csv')) {
-  my ($date) = $file =~ /(\d{4}.+?)\.csv/;
+for my $file (glob('*.csv'), glob('*.sqlite')) {
+  my ($date) = $file =~ /(\d{4}.+?)\.(?:csv|sqlite)/;
 
   (my $key = $date) =~ s/-//g;
 
