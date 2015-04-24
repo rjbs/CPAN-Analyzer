@@ -15,7 +15,7 @@ sub analyze_cpan {
   my ($self, $arg) = @_;
 
   my $cpan_root = $arg->{cpan_root};
-  $arg->{workroot} && (local $ENV{TMPDIR} = $arg->{workroot});
+  $arg->{work_root} && (local $ENV{TMPDIR} = $arg->{work_root});
 
   my $JSON = JSON->new;
 
