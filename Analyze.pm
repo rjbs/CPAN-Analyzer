@@ -19,7 +19,6 @@ sub analyze_cpan {
 
   my $JSON = JSON->new;
 
-  my $total = 0;
   my @data;
 
   my $filename = sprintf '%s/dist-%s.sqlite',
@@ -75,7 +74,6 @@ sub analyze_cpan {
   );
 
   my @dists = $index->latest_distributions;
-  my $total = @dists;
   my %dist_object;
 
   # XXX: Violating encapsulation here!
