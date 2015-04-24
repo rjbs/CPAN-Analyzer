@@ -1,7 +1,7 @@
 use 5.20.0;
 use warnings;
 use experimental 'postderef';
-package Analyze;
+package Aggregate;
 
 use DBI;
 use Text::CSV_XS;

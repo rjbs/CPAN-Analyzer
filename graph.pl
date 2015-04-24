@@ -3,7 +3,7 @@ use warnings;
 
 use Data::Dumper;
 
-use Analyze;
+use Aggregate;
 use Chart::Clicker;
 use Chart::Clicker::Data::Series;
 use Chart::Clicker::Data::DataSet;
@@ -18,8 +18,8 @@ for my $file (glob('*.csv'), glob('*.sqlite')) {
 
   (my $key = $date) =~ s/-//g;
 
-  my $result = Analyze->scan_file($file);
-  Analyze->aggregate_minorities($result, 100);
+  my $result = Aggregate->scan_file($file);
+  Aggregate->aggregate_minorities($result, 100);
 
   push @keys, $key;
 

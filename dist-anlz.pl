@@ -4,13 +4,13 @@ use experimental 'postderef';
 use List::Util 'sum0';
 use Text::Table;
 
-use Analyze;
+use Aggregate;
 
 my $file   = $ARGV[0];
-my $result = Analyze->scan_file($file);
+my $result = Aggregate->scan_file($file);
 my $agg    = $ARGV[1] // 50;
 
-Analyze->aggregate_minorities($result, $agg);
+Aggregate->aggregate_minorities($result, $agg);
 
 my $dz_results = $result->{'Dist::Zilla'};
 my $count      = $dz_results->{distfiles}->@*;
