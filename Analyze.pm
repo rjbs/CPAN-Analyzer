@@ -173,7 +173,7 @@ sub analyze_cpan {
         $report{meta_spec} = eval { $meta->{'meta-spec'}{version} };
         $report{meta_generator} = $meta->{generated_by};
 
-        if ($meta->{generated_by} =~ /\A(\S+) version ([^\s,]+)/) {
+        if (($meta->{generated_by}//'') =~ /\A(\S+) version ([^\s,]+)/) {
           $report{meta_gen_package} = $1;
           $report{meta_gen_version} = $2;
         }
