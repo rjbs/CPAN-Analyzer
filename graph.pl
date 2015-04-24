@@ -44,6 +44,8 @@ for my $set (
 ) {
   $#{ $series{$set} } = $#keys;
 
+  next unless $set;
+
   $_ //= 0 for @{ $series{$set} };
 
   my $series = Chart::Clicker::Data::Series->new(
