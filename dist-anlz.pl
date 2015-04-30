@@ -21,7 +21,7 @@ printf "There are %s dists by %s unique cpan ids using Dist::Zilla.\n\n",
   $count,
   $cpanids;
 
-my $table = Text::Table->new('generator', \' | ', 'dists', \' | ', \' | ', 'authors', '%');
+my $table = Text::Table->new('generator', \' | ', 'dists', \' | ', 'authors', \' | ', '%');
 
 my $total = sum0 map {; 0 + $_->{distfiles}->@* } values %$result;
 
