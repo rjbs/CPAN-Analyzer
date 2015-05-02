@@ -3,14 +3,19 @@ use rjbs;
 
 use DBI;
 use Getopt::Long::Descriptive;
+use Module::CoreList;
 use Term::ANSIColor;
 
 my ($opt, $usage) = describe_options(
   '%c %o DBFILE DIST [TARGET-DIST]',
-  [ 'prune=s@', 'stop if you hit this path on the way to a target' ],
+  [ 'prune=s@',   'stop if you hit this path on the way to a target' ],
+  [ 'output=s',   'how to print output; default: tree', { default => 'tree' } ],
+  [ 'skip-core!', 'skip modules from the core' ],
 );
 
-my ($dbfile, $dist, $to_dist) = @ARGV;
+my ($dbfile, $dist, $target) = @ARGV;
+
+$usage->die unless $dbfile && $dist;
 
 my $dbh = DBI->connect("dbi:SQLite:dbname=$dbfile", undef, undef);
 
@@ -27,23 +32,19 @@ my $sth = $dbh->prepare(
 );
 
 sub dump_prereqs ($dist, $indent) {
-  my $rows = $dbh->selectall_arrayref(
-    $sth,
-    { Slice => {} },
-    $dist,
-  );
+  my @dists = _dists_required_by($dist);
 
-  for (@$rows) {
-    if ($seen{$_->{module_dist}}++) {
+  for (@dists) {
+    if ($seen{$_}++) {
       print color('green');
-      printf "%s%s\n", ('  ' x $indent), $_->{module_dist};
+      printf "%s%s\n", ('  ' x $indent), $_;
       print color('reset');
       # printf "%s%s\n", ('  ' x ($indent+1)), '<see above>';
     } else {
       print color('bold green');
-      printf "%s%s\n", ('  ' x $indent), $_->{module_dist};
+      printf "%s%s\n", ('  ' x $indent), $_;
       print color('reset');
-      dump_prereqs($_->{module_dist}, $indent+1);
+      dump_prereqs($_, $indent+1);
     }
   }
 }
@@ -55,7 +56,8 @@ sub _dists_required_by ($dist) {
     $dist,
   );
 
-  return map {; $_->{module_dist} } $rows->@*;
+  return  grep { ! $opt->skip_core or ! defined $Module::CoreList::version{5.020000}{$_} }
+          map  {; $_->{module_dist} } $rows->@*;
 }
 
 my %PATH_FOR;
@@ -77,28 +79,56 @@ sub _paths_between ($dist, $target, $path = []) {
   return $PATH_FOR{ $dist, $target } = keys %return ? \%return : undef;
 }
 
-sub print_tree ($tree, $depth = 0) {
-  my $leader = '  ' x $depth;
+sub print_tree {
 
-  unless (ref $tree) {
-    print "$leader$tree\n";
-    return;
-  }
+  my $print_tree = sub ($start, $struct, $depth = 0) {
+    my $leader = '  ' x $depth;
 
-  for my $key (sort { fc $a cmp fc $b } keys %$tree) {
-    my $value = $tree->{$key};
-    my $mark  = ref $value ? "" : "* ";
+    print "$leader$start\n";
+    return unless ref $struct;
 
-    print "$leader$mark$key\n";
-    print_tree($tree->{$key}, $depth+1) if ref $value;
-  }
+    for my $key (sort { fc $a cmp fc $b } keys %$struct) {
+      my $value = $struct->{$key};
+      __SUB__->($key, $struct->{$key}, $depth+1);
+    }
+  };
+
+  $print_tree->(@_[0,1]);
 }
 
-if ($to_dist) {
-  if (my $tree = _paths_between($dist, $to_dist)) {
-    print_tree($tree);
+sub print_dot ($start, $struct, $arg = {}) {
+  print "digraph {\n";
+
+  print qq{"$start" [style=filled,color=green];\n};
+  print qq{"$arg->{target}" [style=filled,color=red];\n} if $arg->{target};
+
+  my %seen;
+
+  my $print_tree = sub ($start, $struct) {
+    return unless ref $struct;
+    for my $dist (keys %$struct) {
+      print qq{"$start" -> "$dist";\n} unless $seen{$start, $dist}++;
+      __SUB__->($dist, $struct->{$dist});
+    }
+  };
+
+  $print_tree->(@_[0,1]);
+
+  print "}\n";
+}
+
+if ($target) {
+  if (my $tree = _paths_between($dist, $target)) {
+    my $subname = "print_" . $opt->output;
+    unless (main->can($subname)) {
+      warn "unknown outputter " . $opt->output . " so using tree\n";
+      $subname = "print_tree";
+    }
+
+    # LA LA LA I AM AT A HACKATHON SO I CODE FAST AND NOT GOOD LA LA LA
+    main->can($subname)->($dist, $tree, { target => $target });
   } else {
-    print "no path from $dist to $to_dist\n";
+    print "no path from $dist to $target\n";
   }
 } else {
   dump_prereqs($dist, 0);
