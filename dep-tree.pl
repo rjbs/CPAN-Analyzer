@@ -2,7 +2,13 @@
 use rjbs;
 
 use DBI;
+use Getopt::Long::Descriptive;
 use Term::ANSIColor;
+
+my ($opt, $usage) = describe_options(
+  '%c %o DBFILE DIST [TARGET-DIST]',
+  [ 'prune=s@', 'stop if you hit this path on the way to a target' ],
+);
 
 my ($dbfile, $dist, $to_dist) = @ARGV;
 
@@ -57,6 +63,7 @@ sub _paths_between ($dist, $target, $path = []) {
   return $PATH_FOR{ $dist, $target } if exists $PATH_FOR{ $dist, $target };
 
   return $PATH_FOR{ $dist, $target } = $target if $dist eq $target;
+  return $PATH_FOR{ $dist, $target } = undef if grep {; $_ eq $dist } @{ $opt->prune || [] };
   return $PATH_FOR{ $dist, $target } = undef unless my @prereqs = _dists_required_by($dist);
 
   my %in_path = map {; $_ => 1 } @$path;
