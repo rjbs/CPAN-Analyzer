@@ -9,7 +9,7 @@ sub new {
   state $i = 1;
 
   my $dev  = $class->_mk_ramdev($mb);
-  my $type = q{Case-sensitive Journaled HFS+};
+  my $type = q{Case-sensitive HFS+};
   my $name = sprintf "ramdisk-%s-%05u-%u", $^T, $$, $i++;
 
   system(qw(diskutil eraseVolume), $type, $name, $dev)
