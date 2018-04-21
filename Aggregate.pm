@@ -3,8 +3,6 @@ use warnings;
 use experimental 'postderef';
 package Aggregate;
 
-use DBI;
-use Text::CSV_XS;
 use Text::Table;
 
 sub scan_file {
@@ -19,6 +17,7 @@ sub scan_file {
 sub scan_db {
   my ($self, $filename) = @_;
 
+  require DBI;
   my $dsn = "dbi:SQLite:dbname=$filename";
   my $dbh = DBI->connect($dsn, undef, undef);
 
@@ -45,6 +44,7 @@ sub scan_db {
 sub scan_csv {
   my ($self, $filename) = @_;
 
+  require Text::CSV_XS;
   my $csv = Text::CSV_XS->new;
   open my $fh, '<:encoding(utf8)', $filename or die "$filename: $!";
 
