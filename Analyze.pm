@@ -39,6 +39,7 @@ sub analyze_cpan {
     meta_generator,
     meta_gen_package,
     meta_gen_version,
+    meta_gen_perl,
     meta_license,
     meta_yml_error,
     meta_yml_backend,
@@ -54,7 +55,8 @@ sub analyze_cpan {
 
   my @cols = qw(
     distfile dist cpanid mtime has_meta_yml has_meta_json meta_spec meta_generator
-    meta_gen_package meta_gen_version meta_license
+    meta_gen_package meta_gen_version meta_gen_perl
+    meta_license
     meta_yml_error meta_yml_backend meta_json_error meta_yml_backend
     meta_struct_error
     has_dist_ini
@@ -177,9 +179,20 @@ sub process_job {
       $report{meta_spec} = eval { $meta->{'meta-spec'}{version} };
       $report{meta_generator} = $meta->{generated_by};
 
-      if (($meta->{generated_by}//'') =~ /\A(\S+) version ([^\s,]+)/) {
+      if (($meta->{generated_by}//'') =~ m{\A(\S+?) version ([^\s,]+)}) {
         $report{meta_gen_package} = $1;
         $report{meta_gen_version} = $2;
+      } elsif (($meta->{generated_by}//'') =~ m{\A(\S+)/([^\s,]+)}) {
+        $report{meta_gen_package} = $1;
+        $report{meta_gen_version} = $2;
+      }
+
+      if ($meta->{x_generated_by_perl}) {
+        $report{meta_gen_perl} = $meta->{x_generated_by_perl};
+      } elsif ($meta->{x_Dist_Zilla}) {
+        $report{meta_gen_perl} = version
+                                  ->parse($meta->{x_Dist_Zilla}{perl}{version})
+                                  ->normal;
       }
 
       $report{meta_license} = $meta->{license} // '';
