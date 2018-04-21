@@ -11,6 +11,7 @@ my ($opt, $usage) = describe_options(
   [ 'prune=s@',   'stop if you hit this path on the way to a target' ],
   [ 'output=s',   'how to print output; default: tree', { default => 'tree' } ],
   [ 'skip-core!', 'skip modules from the core' ],
+  [ 'once',       'only print things the first time they appear' ],
 );
 
 my ($dbfile, $dist, $target) = @ARGV;
@@ -34,8 +35,9 @@ my $sth = $dbh->prepare(
 sub dump_prereqs ($dist, $indent) {
   my @dists = _dists_required_by($dist);
 
-  for (@dists) {
+  DIST: for (@dists) {
     if ($seen{$_}++) {
+      next if $opt->once;
       print color('green');
       printf "%s%s\n", ('  ' x $indent), $_;
       print color('reset');
