@@ -1,6 +1,9 @@
 #!/usr/bin/env perl
 use 5.20.0;
 use warnings;
+
+use lib 'lib';
+
 use Analyze;
 use Getopt::Long::Descriptive;
 use Ramdisk;

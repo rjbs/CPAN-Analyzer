@@ -5,6 +5,8 @@ use experimental 'postderef';
 use List::Util 'sum0';
 use Text::Table;
 
+use lib 'lib';
+
 use Aggregate;
 
 my $file   = $ARGV[0];
