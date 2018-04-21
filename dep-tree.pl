@@ -1,5 +1,8 @@
 #!/usr/bin/env perl
-use rjbs;
+use v5.24.0;
+use warnings;
+
+use experimental qw(postderef signatures);
 
 use DBI;
 use Getopt::Long::Descriptive;
@@ -10,8 +13,11 @@ my ($opt, $usage) = describe_options(
   '%c %o DBFILE DIST [TARGET-DIST]',
   [ 'prune=s@',   'stop if you hit this path on the way to a target' ],
   [ 'output=s',   'how to print output; default: tree', { default => 'tree' } ],
-  [ 'skip-core!', 'skip modules from the core' ],
   [ 'once',       'only print things the first time they appear' ],
+  [ 'skip-core!',     'skip modules from the core' ],
+  [ 'core-version=s', 'when skipping core modules, skip this version (5.XXX)',
+                      { default => substr($], 0, 5) } ],
+  [ 'include-develop|D', 'include phase=develop prereqs' ],
 );
 
 my ($dbfile, $dist, $target) = @ARGV;
@@ -27,13 +33,13 @@ my $sth = $dbh->prepare(
   FROM dist_prereqs
   WHERE dist = ?
     AND type = 'requires'
-    AND phase <> 'develop'
+    AND (? OR phase <> 'develop')
     AND module_dist IS NOT NULL
   ORDER BY LOWER(module_dist)",
 );
 
 sub dump_prereqs ($dist, $indent) {
-  my @dists = _dists_required_by($dist);
+  my @dists = _dists_required_by($dist, $opt->include_develop && $indent == 0);
 
   DIST: for (@dists) {
     if ($seen{$_}++) {
@@ -51,30 +57,31 @@ sub dump_prereqs ($dist, $indent) {
   }
 }
 
-sub _dists_required_by ($dist) {
+sub _dists_required_by ($dist, $include_develop) {
   my $rows = $dbh->selectall_arrayref(
     $sth,
     { Slice => {} },
     $dist,
+    $include_develop,
   );
 
-  return  grep { ! $opt->skip_core or ! defined $Module::CoreList::version{5.020000}{$_} }
+  return  grep { ! $opt->skip_core or ! defined $Module::CoreList::version{ $opt->core_version }{$_} }
           map  {; $_->{module_dist} } $rows->@*;
 }
 
 my %PATH_FOR;
-sub _paths_between ($dist, $target, $path = []) {
+sub _paths_between ($dist, $target, $top = 1, $path = []) {
   return $PATH_FOR{ $dist, $target } if exists $PATH_FOR{ $dist, $target };
 
   return $PATH_FOR{ $dist, $target } = $target if $dist eq $target;
   return $PATH_FOR{ $dist, $target } = undef if grep {; $_ eq $dist } @{ $opt->prune || [] };
-  return $PATH_FOR{ $dist, $target } = undef unless my @prereqs = _dists_required_by($dist);
+  return $PATH_FOR{ $dist, $target } = undef unless my @prereqs = _dists_required_by($dist, $top && $opt->include_develop);
 
   my %in_path = map {; $_ => 1 } @$path;
 
   my %return;
   for my $prereq ( grep { ! $in_path{$_} } @prereqs ) {
-    my $paths = _paths_between($prereq, $target, [ @$path, $prereq ]);
+    my $paths = _paths_between($prereq, $target, 0, [ @$path, $prereq ]);
     $return{$prereq} = $paths if $paths;
   }
 
