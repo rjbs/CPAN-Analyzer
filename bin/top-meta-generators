@@ -2,18 +2,25 @@
 use 5.20.0;
 use warnings;
 use experimental 'postderef';
-use List::Util 'sum0';
-use Text::Table;
 
 use lib 'lib';
 
 use Aggregate;
+use Getopt::Long::Descriptive;
+use List::Util 'sum0';
+use Text::Table;
 
-my $file   = $ARGV[0];
+my ($opt, $usage) = describe_options(
+  '%c %o',
+  [ 'file|f=s', "source file to scrape for data",     { required => 1 } ],
+  [ 'min|n=i',  "number of dists to be significant",  { default => 50 } ],
+);
+
+my $min    = $opt->min;
+my $file   = $opt->file;
 my $result = Aggregate->scan_file($file);
-my $agg    = $ARGV[1] // 50;
 
-Aggregate->aggregate_minorities($result, $agg);
+Aggregate->aggregate_minorities($result, $min);
 
 my $dz_results = $result->{'Dist::Zilla'};
 my $count      = $dz_results->{distfiles}->@*;
