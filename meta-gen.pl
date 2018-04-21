@@ -10,7 +10,7 @@ my ($opt, $desc) = describe_options(
   [ 'ramdisk', "make a ramdisk to which to extract" ],
 );
 
-my $cpan_root = "/Users/rjbs/Sync/minicpan";
+my $cpan_root = "/Users/rjbs/minicpan";
 
 my $ramdisk = $opt->ramdisk ? Ramdisk->new(1024) : undef;
 
