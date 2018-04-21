@@ -82,6 +82,12 @@ sub _process_iterator {
     $tool->{distfiles} ||= [];
     push @{ $tool->{distfiles} }, $row->{distfile};
 
+    unless (defined $row->{cpanid}) {
+      # What the heck happened?! -- rjbs, 2018-04-21
+      my ($cpanid) = split m{/}, $row->{distfile};
+      $row->{cpanid} = $cpanid;
+    }
+
     $tool->{cpanid}{ $row->{cpanid} }++;
   }
 
