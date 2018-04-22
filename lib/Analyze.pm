@@ -31,11 +31,13 @@ sub analyze_cpan {
   $dbh->do("CREATE TABLE dists (
     distfile PRIMARY KEY,
     dist,
+    dist_version,
     cpanid,
     mtime INTEGER,
     has_meta_yml,
     has_meta_json,
     meta_spec,
+    meta_dist_version,
     meta_generator,
     meta_gen_package,
     meta_gen_version,
@@ -54,7 +56,9 @@ sub analyze_cpan {
   );
 
   my @cols = qw(
-    distfile dist cpanid mtime has_meta_yml has_meta_json meta_spec meta_generator
+    distfile dist dist_version cpanid mtime has_meta_yml has_meta_json meta_spec
+    meta_dist_version
+    meta_generator
     meta_gen_package meta_gen_version meta_gen_perl
     meta_license
     meta_yml_error meta_yml_backend meta_json_error meta_yml_backend
@@ -83,7 +87,7 @@ sub analyze_cpan {
   $dist_for_pkg{$_} = CPAN::DistnameInfo->new($dist_for_pkg{$_})->dist
     for keys %dist_for_pkg;
 
-  while (my @next = splice @dists, 0, 250) {
+  while (my @next = splice @dists, 0, (@dists % 250 || 250)) {
     $pm->start and next;
 
     my @files;
@@ -143,7 +147,8 @@ sub process_job {
     my %report = $state->{template}->%*;
     my $dist = $state->{dist_object}{ $job->{distfile} };
 
-    $report{dist} = $dist->dist;
+    $report{dist}         = $dist->dist;
+    $report{dist_version} = $dist->version;
 
     $report{distfile} = $job->{distfile};
     ($report{cpanid}) = split m{/}, $job->{distfile};
@@ -177,7 +182,8 @@ sub process_job {
 
     if (my $meta = $json_distmeta || $yaml_distmeta) {
       $report{meta_spec} = eval { $meta->{'meta-spec'}{version} };
-      $report{meta_generator} = $meta->{generated_by};
+      $report{meta_generator}     = $meta->{generated_by};
+      $report{meta_dist_version}  = $meta->{version};
 
       if (($meta->{generated_by}//'') =~ m{\A(\S+?) version ([^\s,]+)}) {
         $report{meta_gen_package} = $1;
