@@ -1,0 +1,98 @@
+#!/usr/bin/env perl
+use v5.24.0;
+use warnings;
+
+use experimental qw(postderef signatures);
+
+use DBI;
+use Getopt::Long::Descriptive;
+use Module::CoreList;
+use Term::ANSIColor;
+
+my ($opt, $usage) = describe_options(
+  '%c %o DBFILE',
+  [ 'scores!', 'show the scores as well as the name', { default => 1 } ],
+  [ 'modules', 'print module names, not dist names' ],
+);
+
+my ($dbfile) = @ARGV;
+
+$usage->die unless $dbfile;
+
+my $dbh = DBI->connect("dbi:SQLite:dbname=$dbfile", undef, undef);
+
+my %required_as;
+for my $prereq (
+  $dbh->selectall_arrayref(
+    'SELECT DISTINCT module, module_dist FROM dist_prereqs',
+    { Slice => {} },
+  )->@*
+) {
+  next if $prereq->{module} eq 'perl';
+  next if ! defined $prereq->{module_dist};
+
+  $required_as{ $prereq->{module_dist} }{ $prereq->{module} } = 1;
+}
+
+my $sth = $dbh->prepare(
+  "SELECT DISTINCT dist
+  FROM dist_prereqs
+  WHERE module_dist = ?
+    AND type = 'requires'
+    AND phase <> 'develop'
+    AND phase <> 'x_Dist_Zilla' /* !? */
+  ORDER BY LOWER(module_dist)",
+);
+
+my $dist_rows = $dbh->selectcol_arrayref('SELECT dist FROM dists');
+my %score;
+for my $dist (@$dist_rows) {
+  $score{$dist} = downstream_count($dist);
+}
+
+sub display_as ($distname) {
+  return $distname unless $opt->modules;
+
+  my $mname = $distname =~ s/-/::/gr;
+  return $mname if $required_as{$distname}{$mname};
+
+  my ($name) = sort keys $required_as{$distname}->%*;
+  return $name;
+}
+
+if ($opt->scores) {
+  for my $dist (sort { $score{$b} <=> $score{$a} } keys %score) {
+    printf "%i %s\n", $score{$dist}, display_as($dist);
+  }
+} else {
+  for my $dist (sort { $score{$b} <=> $score{$a} } keys %score) {
+    say display_as($dist);
+  }
+}
+
+sub downstream_count ($dist) {
+  my @dists = _dists_requiring($dist);
+  my $count = @dists;
+
+  my %seen;
+  DIST: for (@dists) {
+    next DIST if $seen{$_}++;
+    $count += _dists_requiring($_);
+  }
+
+  return $count;
+}
+
+sub _dists_requiring ($dist) {
+  state %dists_requiring;
+
+  $dists_requiring{$dist} //= do {
+    my $dists = $dbh->selectcol_arrayref(
+      $sth,
+      { Slice => {} },
+      $dist,
+    );
+  };
+
+  return $dists_requiring{$dist}->@*;
+}
