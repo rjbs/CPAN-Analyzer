@@ -1,0 +1,64 @@
+#!/usr/bin/env perl
+use v5.24.0;
+use warnings;
+
+use experimental qw(postderef signatures);
+
+use DBI;
+use Getopt::Long::Descriptive;
+use Module::CoreList;
+use Term::ANSIColor;
+
+my ($opt, $usage) = describe_options(
+  '%c %o DBFILE DIST',
+  [ 'prune=s@',       'stop if you hit this path on the way to a target' ],
+  [ 'once',           'only print things the first time they appear' ],
+  [ 'skip-core!',     'skip modules from the core' ],
+  [ 'core-version=s', 'when skipping core modules, skip this version (5.XXX)',
+                      { default => substr($], 0, 5) } ],
+  [ 'include-develop|D', 'include phase=develop prereqs' ],
+);
+
+my ($dbfile, $dist) = @ARGV;
+
+$usage->die unless $dbfile && $dist;
+
+my $dbh = DBI->connect("dbi:SQLite:dbname=$dbfile", undef, undef);
+
+my %seen;
+
+my $sth = $dbh->prepare(
+  "SELECT DISTINCT dist
+  FROM dist_prereqs
+  WHERE module_dist = ?
+    AND type = 'requires'
+    AND (? OR phase <> 'develop')
+    AND phase <> 'x_Dist_Zilla' /* !? */
+    /* AND module_dist IS NOT NULL
+       AND module_dist <> 'perl'*/
+  ORDER BY LOWER(module_dist)",
+);
+
+sub dump_prereqs ($dist, $indent) {
+  my @dists = _dists_requiring($dist, $opt->include_develop);
+
+  DIST: for (@dists) {
+    next if $seen{$_}++ && $opt->once;
+
+    printf "%s%s\n", ('  ' x $indent), $_;
+    dump_prereqs($_, $indent+1);
+  }
+}
+
+sub _dists_requiring ($dist, $include_develop) {
+  my $dists = $dbh->selectcol_arrayref(
+    $sth,
+    { Slice => {} },
+    $dist,
+    $include_develop,
+  );
+
+  return @$dists;
+}
+
+dump_prereqs($dist, 0);
