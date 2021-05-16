@@ -55,6 +55,10 @@ sub analyze_cpan {
     "CREATE TABLE dist_prereqs (dist, phase, type, module, requirements, module_dist)",
   );
 
+  $dbh->do(
+    "CREATE INDEX dist_prereqs_by_target on dist_prereqs (module_dist, phase, type)",
+  );
+
   my @cols = qw(
     distfile dist dist_version cpanid mtime has_meta_yml has_meta_json meta_spec
     meta_dist_version
