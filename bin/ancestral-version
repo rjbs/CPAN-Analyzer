@@ -1,0 +1,102 @@
+#!/usr/bin/env perl
+use v5.24.0;
+use warnings;
+
+use experimental qw(postderef signatures);
+
+use DBI;
+use Getopt::Long::Descriptive;
+use Module::CoreList;
+use Term::ANSIColor;
+use version;
+
+my ($opt, $usage) = describe_options(
+  '%c %o DBFILE DIST',
+  [ 'include-develop|D', 'include phase=develop prereqs' ],
+  [ 'verbose|v',         'say whatever is on your mind' ],
+);
+
+my ($dbfile, $dist) = @ARGV;
+
+$usage->die unless $dbfile && $dist;
+
+my $dbh = DBI->connect("dbi:SQLite:dbname=$dbfile", undef, undef);
+die "could not connect: $DBI::errstr" unless $dbh;
+
+# Our goal is to start at the DIST given in ARGV and work our way backward
+# through its prereqs, finding the highest version of perl already required.
+my %seen;
+my @todo = $dist;
+
+my $itself;
+
+my $max = 0;
+my %by;
+
+my $sql = "SELECT * FROM dist_prereqs WHERE dist = ?";
+$sql .= " AND phase NOT LIKE 'x_%'";
+$sql .= " AND phase <> 'develop'" unless $opt->include_develop;
+
+while (my $todo = shift @todo) {
+  next if $seen{$todo}++;
+
+  my $prereq = $dbh->selectall_arrayref(
+    $sql,
+    { Slice => {} },
+    $todo,
+  );
+
+  my %sub_seen;
+  for my $row (@$prereq) {
+    next if $sub_seen{ $row->{module_dist} // '' } ++;
+    next if $seen{ $row->{module_dist} // '' };
+
+    if ($row->{module} eq 'perl') {
+      my $v = version->parse($row->{requirements})->numify;
+      say "Perl version required for $row->{dist}: $v" if $opt->verbose;
+
+      if ($v > $max) {
+        $max = $v;
+        %by = ();
+        $by{ $row->{dist} } = 1;
+
+        $itself = $v if $todo eq $dist;
+      } elsif ($v == $max) {
+        $by{ $row->{dist} } = 1;
+      }
+
+      next;
+    }
+
+    push @todo, $row->{module_dist};
+  }
+}
+
+sub v {
+  my $v = shift;
+  return colored([ 'ansi244' ], $v) if $v < 5.009;
+  return colored([ 'ansi214' ], $v) if $v < 5.011;
+  return colored([ 'ansi207' ], $v) if $v < 5.013;
+  return colored([ 'ansi171' ], $v) if $v < 5.015;
+  return colored([ 'ansi118' ], $v);
+}
+
+if (defined $itself && $itself >= $max) {
+  printf "[%s] %s requires %s\n",
+    colored([ 'bright_green' ], 'PASS' ),
+    $dist,
+    $itself;
+  exit;
+}
+
+my $req = $itself // 'nothing';
+printf "[%s] %s requires %s; prereqs require %s\n",
+  colored([ 'bright_red' ], 'FAIL' ),
+  $dist,
+  $req,
+  v($max);
+
+__END__
+say "The dist $dist itself requires " . (defined $itself ? $itself : 'nothing');
+say "Version $max is required by:";
+say "- $_" for sort keys %by;
