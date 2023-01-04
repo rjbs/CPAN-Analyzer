@@ -1,0 +1,119 @@
+#!perl
+use v5.36.0;
+
+use DBI;
+use Getopt::Long::Descriptive;
+use Term::ANSIColor;
+use version;
+
+my ($opt, $usage) = describe_options(
+  '%c %o DBFILE DIST...',
+  [],
+  [ 'cpan=s',   "path to a CPAN mirrir", { required => 1 } ],
+  [ 'cpanid=s', "if no dists given, all dists for this author" ],
+);
+
+if (@ARGV > 1 && $opt->cpanid) {
+  die "--cpanid doesn't make sense with a list of dists.\n";
+}
+
+$usage->die unless @ARGV;
+
+my $dbh = DBI->connect('dbi:SQLite:' . shift(@ARGV), undef, undef)
+  or die "failed to connect: " . $DBI::errstr;
+
+my @queue = @ARGV;
+
+unless (@queue) {
+  require Parse::CPAN::Packages::Fast;
+  my $index = Parse::CPAN::Packages::Fast->new(
+    $opt->cpan . "/modules/02packages.details.txt.gz"
+  );
+
+  my $cpanid = uc $opt->cpanid;
+  my @dists = grep {; $_->cpanid eq $cpanid } $index->latest_distributions;
+  @queue = sort map {; $_->dist } @dists;
+}
+
+my %perl_required;
+
+{
+  my $rows = $dbh->selectall_arrayref(
+    q{
+      SELECT dist, requirements
+      FROM dist_prereqs
+      WHERE phase IN ('runtime', 'install', 'configure', 'build')
+        AND module = 'perl'
+    },
+    { Slice => {} },
+  );
+
+  ROW: for my $row (@$rows) {
+    my $perl_v = eval {
+      version->parse($row->{requirements});
+    };
+
+    unless (defined $perl_v) {
+      warn "Skipping perl requirement for $row->{dist}: $row->{requirements}\n";
+      next ROW;
+    }
+
+    next if $perl_required{$row->{dist}} && $perl_required{$row->{dist}} >= $perl_v;
+
+    $perl_required{$row->{dist}} = $perl_v;
+  };
+}
+
+my sub shorten ($dist_name) {
+  $dist_name =~ s/\ADist-Zilla-Plugin-/D-Z-P-/r;
+}
+
+my sub maybe_color ($version) {
+  return sprintf '%8s', '~' unless $version;
+
+  my $str = sprintf '%8s', $version->normal;
+
+  return colored(['bright_green'],   $str) if $version ge v5.22.0;
+  return colored(['bright_yellow'],  $str) if $version ge v5.20.0;
+  return colored(['ansi141'],        $str) if $version ge v5.18.0;
+  return colored(['bright_magenta'], $str) if $version ge v5.14.0;
+  return colored(['ansi208'],        $str) if $version ge v5.10.0;
+
+  return $str;
+}
+
+for my $dist (@queue) {
+  my @already = do {
+    local $ENV{ANSI_COLORS_DISABLED} = 1;
+    `$^X bin/dep-tree dist-2023-01-03.sqlite $dist --once`;
+  };
+
+  chomp @already;
+  s/\A\s+//, s/\s+\z// for @already;
+
+  # This is a funny one. -- rjbs, 2023-01-03
+  @already = grep {; $_ ne 'podlators' } @already;
+
+  my %other = map {; $_ => $perl_required{$_} } @already;
+  my ($max) = sort {; $b cmp $a } grep {; defined } values %other;
+  my @at_max = defined $max ? (sort grep {; $perl_required{$_} == $max } keys %other)
+                            : ();
+
+  if (
+    ($perl_required{$dist} && $max && $perl_required{$dist} >= $max)
+    or
+    (!$perl_required{$dist} && !$max)
+  ) {
+    printf "%-35s (%s) -- not forced\n",
+      shorten($dist),
+      maybe_color($perl_required{$dist});
+
+    next;
+  }
+
+  printf "%-35s (%8s) -> (%8s) via %s\n",
+    shorten($dist),
+    maybe_color($perl_required{$dist}),
+    maybe_color($max),
+    (@at_max ? "@at_max" : '~');
+}
