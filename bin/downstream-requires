@@ -12,8 +12,6 @@ use version;
 my ($opt, $usage) = describe_options(
   '%c %o DBFILE DIST...',
   [],
-  [ 'cpan=s',   "path to a CPAN mirrir", { required => 1 } ],
-  [],
   [ 'square-circle', 'use upstreams for each downstream (woah)' ],
   [ 'odd-is-okay',   'do not bump v5.11 to v5.12, for example' ],
   [],
