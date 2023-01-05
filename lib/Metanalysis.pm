@@ -37,7 +37,7 @@ sub _build_perl_for_dist ($self) {
     q{
       SELECT dist, requirements
       FROM dist_prereqs
-      WHERE phase IN ('runtime', 'install', 'configure', 'build')
+      WHERE phase IN ('runtime', 'install', 'configure', 'build', 'test')
         AND module = 'perl'
     },
     { Slice => {} },
