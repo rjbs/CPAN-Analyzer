@@ -19,7 +19,8 @@ if (@ARGV > 1 && $opt->cpanid) {
 
 $usage->die unless @ARGV;
 
-my $dbh = DBI->connect('dbi:SQLite:' . shift(@ARGV), undef, undef)
+my $db_file = shift @ARGV;
+my $dbh = DBI->connect("dbi:SQLite:$db_file", undef, undef)
   or die "failed to connect: " . $DBI::errstr;
 
 my @queue = @ARGV;
@@ -85,7 +86,7 @@ my sub maybe_color ($version) {
 for my $dist (@queue) {
   my @already = do {
     local $ENV{ANSI_COLORS_DISABLED} = 1;
-    `$^X bin/dep-tree dist-2023-01-03.sqlite $dist --once`;
+    `$^X bin/dep-tree $db_file $dist --once`;
   };
 
   chomp @already;
