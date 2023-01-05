@@ -62,4 +62,72 @@ sub _build_perl_for_dist ($self) {
   return \%perl_required;
 }
 
+sub maximum_perl_required_among ($self, $dists) {
+  my @consider = grep {; $_ ne 'podlators' } @$dists; # podlators is weird
+  my @perls = grep {; defined }
+              map  {; $self->perl_for_dist($_) }
+              @consider;
+
+  my ($max) = sort {; $b <=> $a } @perls;
+
+  state $v5_10 = version->parse('v5.10');
+
+  if ($ENV{DEBUG}) {
+    my @at_v5_10 = grep {; $self->perl_for_dist($_) == $v5_10 } @consider;
+    if (@at_v5_10) {
+      say "v5.10 via @at_v5_10";
+    }
+  }
+
+  return $max;
+}
+
+# Valid arguments:
+#   * phases: arrayref; phases of prereq to include
+#   * types : arrayref; types of prereqs to include; default to [ requires ]
+sub recursive_requirements_for ($self, $root, $arg = {}) {
+  my $dbh = $self->dbh;
+
+  my $i = 0;
+  my %seen  = ($root => $i);
+  my @queue = ($root);
+
+  my $phases = $arg->{phases} // [ qw(build configure install runtime test)];
+  my $types  = $arg->{types}  // [ qw(requires) ];
+
+  my $phase_hooks = join q{, }, ('?') x @$phases;
+  my $type_hooks  = join q{, }, ('?') x @$types;
+
+  my $sth = $dbh->prepare(
+    "SELECT DISTINCT module_dist
+    FROM dist_prereqs
+    WHERE dist = ?
+      AND phase IN ($phase_hooks)
+      AND type IN ($type_hooks)
+      AND module_dist IS NOT NULL
+      AND module_dist <> 'perl'
+    ORDER BY LOWER(module_dist)",
+  );
+
+  while (@queue) {
+    my @this = @queue;
+    @queue = ();
+
+    for my $dist (@this) {
+      my $prereqs = $dbh->selectcol_arrayref($sth, undef, $dist, @$phases, @$types);
+
+      for my $prereq (@$prereqs) {
+        next if exists $seen{$prereq};
+        $seen{$prereq} = $i;
+        push @queue, $prereq;
+      }
+    }
+
+    $i++;
+  }
+
+  return keys %seen;
+}
+
+
 1;
