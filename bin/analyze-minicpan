@@ -13,7 +13,10 @@ my ($opt, $desc) = describe_options(
   [ 'ramdisk', "make a ramdisk to which to extract" ],
 );
 
-my $cpan_root = "/Users/rjbs/minicpan";
+die "can't find your minicpan!\n"
+  unless $ENV{HOME} && -d "$ENV{HOME}/minicpan";
+
+my $cpan_root = "$ENV{HOME}/minicpan";
 
 my $ramdisk = $opt->ramdisk ? Ramdisk->new(1024) : undef;
 

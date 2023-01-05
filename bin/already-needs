@@ -12,7 +12,7 @@ use version;
 my ($opt, $usage) = describe_options(
   '%c %o DBFILE DIST...',
   [],
-  [ 'cpan=s',   "path to a CPAN mirrir", { required => 1 } ],
+  [ 'cpan=s',   "path to a CPAN mirror" ],
   [ 'cpanid=s', "if no dists given, all dists for this author" ],
   [ 'only-bumpable|B', 'only show things we can bump up'  ],
   [ 'minimum-interesting|n=s', q{skip anything that can't reach this version (use v5.x format)} ],
@@ -36,9 +36,12 @@ my $dbh = $ma->dbh;
 my @queue = @ARGV;
 
 unless (@queue) {
+  die "can't find your minicpan!\n"
+    unless $ENV{HOME} && -d "$ENV{HOME}/minicpan";
+
   require Parse::CPAN::Packages::Fast;
   my $index = Parse::CPAN::Packages::Fast->new(
-    $opt->cpan . "/modules/02packages.details.txt.gz"
+    "$ENV{HOME}/minicpan/modules/02packages.details.txt.gz"
   );
 
   my $cpanid = uc $opt->cpanid;
