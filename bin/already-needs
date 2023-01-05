@@ -1,8 +1,11 @@
 #!perl
 use v5.36.0;
 
+use lib 'lib';
+
 use DBI;
 use Getopt::Long::Descriptive;
+use Metanalysis;
 use Term::ANSIColor;
 use version;
 
@@ -27,8 +30,8 @@ if (@ARGV > 1 && $opt->cpanid) {
 $usage->die unless @ARGV;
 
 my $db_file = shift @ARGV;
-my $dbh = DBI->connect("dbi:SQLite:$db_file", undef, undef)
-  or die "failed to connect: " . $DBI::errstr;
+my $ma = Metanalysis->new({ db_file => $db_file });
+my $dbh = $ma->dbh;
 
 my @queue = @ARGV;
 
@@ -41,38 +44,6 @@ unless (@queue) {
   my $cpanid = uc $opt->cpanid;
   my @dists = grep {; $_->cpanid eq $cpanid } $index->latest_distributions;
   @queue = sort map {; $_->dist } @dists;
-}
-
-my %perl_required;
-
-{
-  my $rows = $dbh->selectall_arrayref(
-    q{
-      SELECT dist, requirements
-      FROM dist_prereqs
-      WHERE phase IN ('runtime', 'install', 'configure', 'build')
-        AND module = 'perl'
-    },
-    { Slice => {} },
-  );
-
-  ROW: for my $row (@$rows) {
-    my $perl_v = eval {
-      version->parse($row->{requirements});
-    };
-
-    unless (defined $perl_v) {
-      if ($opt->debug) {
-        warn "Skipping perl requirement for $row->{dist}: $row->{requirements}\n";
-      }
-
-      next ROW;
-    }
-
-    next if $perl_required{$row->{dist}} && $perl_required{$row->{dist}} >= $perl_v;
-
-    $perl_required{$row->{dist}} = $perl_v;
-  };
 }
 
 my sub shorten ($dist_name) {
@@ -105,21 +76,24 @@ for my $dist (@queue) {
   # This is a funny one. -- rjbs, 2023-01-03
   @already = grep {; $_ ne 'podlators' } @already;
 
-  my %other = map {; $_ => $perl_required{$_} } @already;
+  my %other = map {; $_ => $ma->perl_for_dist($_) } @already;
   my ($max) = sort {; $b cmp $a } grep {; defined } values %other;
-  my @at_max = defined $max ? (sort grep {; $perl_required{$_} == $max } keys %other)
-                            : ();
+  my @at_max  = defined $max
+              ? (sort grep {; $ma->perl_for_dist($_) == $max } keys %other)
+              : ();
+
+  my $perl_for_dist = $ma->perl_for_dist($dist);
 
   if (
-    ($perl_required{$dist} && $max && $perl_required{$dist} >= $max)
+    ($perl_for_dist && $max && $perl_for_dist >= $max)
     or
-    (!$perl_required{$dist} && !$max)
+    (!$perl_for_dist && !$max)
   ) {
     next if $opt->only_bumpable;
 
     printf "%-35s (%s) -- not forced\n",
       shorten($dist),
-      maybe_color($perl_required{$dist});
+      maybe_color($perl_for_dist);
 
     next;
   }
@@ -140,7 +114,7 @@ for my $dist (@queue) {
 
   printf "%-35s (%8s) -> (%8s) via %s\n",
     shorten($dist),
-    maybe_color($perl_required{$dist}),
+    maybe_color($perl_for_dist),
     maybe_color($max),
     $via;
 }
