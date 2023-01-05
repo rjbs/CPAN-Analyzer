@@ -56,6 +56,10 @@ sub analyze_cpan {
   );
 
   $dbh->do(
+    "CREATE INDEX dist_prereqs_by_dist on dist_prereqs (dist, phase, type)",
+  );
+
+  $dbh->do(
     "CREATE INDEX dist_prereqs_by_target on dist_prereqs (module_dist, phase, type)",
   );
 
