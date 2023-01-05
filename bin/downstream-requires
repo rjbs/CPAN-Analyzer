@@ -1,0 +1,94 @@
+#!perl
+use v5.36.0;
+
+use DBI;
+use Getopt::Long::Descriptive;
+use Term::ANSIColor;
+use version;
+
+my ($opt, $usage) = describe_options(
+  '%c %o DBFILE DIST...',
+  [],
+  [ 'cpan=s',   "path to a CPAN mirrir", { required => 1 } ],
+  [ 'minimum-interesting|n=s', q{skip anything that can't reach this version (use v5.x format)} ],
+  [ 'debug',    "make more noise" ],
+);
+
+$usage->die unless @ARGV == 2;
+
+my $db_file = shift @ARGV;
+my $dbh = DBI->connect("dbi:SQLite:$db_file", undef, undef)
+  or die "failed to connect: " . $DBI::errstr;
+
+my $dist = $ARGV[0];
+
+my %perl_required;
+
+{
+  my $rows = $dbh->selectall_arrayref(
+    q{
+      SELECT dist, requirements
+      FROM dist_prereqs
+      WHERE phase IN ('runtime', 'install', 'configure', 'build')
+        AND module = 'perl'
+    },
+    { Slice => {} },
+  );
+
+  ROW: for my $row (@$rows) {
+    my $perl_v = eval {
+      version->parse($row->{requirements});
+    };
+
+    unless (defined $perl_v) {
+      if ($opt->debug) {
+        warn "Skipping perl requirement for $row->{dist}: $row->{requirements}\n";
+      }
+
+      next ROW;
+    }
+
+    next if $perl_required{$row->{dist}} && $perl_required{$row->{dist}} >= $perl_v;
+
+    $perl_required{$row->{dist}} = $perl_v;
+  };
+}
+
+my @downstream = do {
+  local $ENV{ANSI_COLORS_DISABLED} = 1;
+  `$^X bin/what-requires $db_file $dist --once`;
+};
+
+chomp @downstream;
+s/\A\s+//, s/\s+\z// for @downstream;
+
+if ($opt->debug) {
+  say for @downstream;
+}
+
+my %declares;
+my $total;
+
+for my $dep (@downstream) {
+  my $req;
+
+  if ($perl_required{$dep} && $perl_required{$dep}->numify =~ /\A(5\.\d{3})/) {
+    $req = $1;
+  }
+
+  $req //= '~';
+
+  if ($opt->debug) {
+    printf "%6s - %s\n", $req, $dep;
+  }
+
+  $declares{$req}++;
+  $total++;
+}
+
+for my $dec (sort keys %declares) {
+  printf "%6s - %s\n", $dec, $declares{$dec};
+}
+
+say q{};
+say qq{TOTAL: $total};
