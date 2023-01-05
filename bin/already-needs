@@ -11,7 +11,14 @@ my ($opt, $usage) = describe_options(
   [],
   [ 'cpan=s',   "path to a CPAN mirrir", { required => 1 } ],
   [ 'cpanid=s', "if no dists given, all dists for this author" ],
+  [ 'only-bumpable|B', 'only show things we can bump up'  ],
+  [ 'minimum-interesting|n=s', q{skip anything that can't reach this version (use v5.x format)} ],
+  [ 'debug',    "make more noise" ],
 );
+
+my $min = $opt->minimum_interesting
+        ? version->parse($opt->minimum_interesting)
+        : undef;
 
 if (@ARGV > 1 && $opt->cpanid) {
   die "--cpanid doesn't make sense with a list of dists.\n";
@@ -55,7 +62,10 @@ my %perl_required;
     };
 
     unless (defined $perl_v) {
-      warn "Skipping perl requirement for $row->{dist}: $row->{requirements}\n";
+      if ($opt->debug) {
+        warn "Skipping perl requirement for $row->{dist}: $row->{requirements}\n";
+      }
+
       next ROW;
     }
 
@@ -105,6 +115,8 @@ for my $dist (@queue) {
     or
     (!$perl_required{$dist} && !$max)
   ) {
+    next if $opt->only_bumpable;
+
     printf "%-35s (%s) -- not forced\n",
       shorten($dist),
       maybe_color($perl_required{$dist});
@@ -112,9 +124,23 @@ for my $dist (@queue) {
     next;
   }
 
+  if ($min) {
+    next unless $max && $max >= $min;
+  }
+
+  my $via;
+  if (@at_max > 3) {
+    my $n = @at_max - 3;
+    $via = "@at_max[0..2] plus $n more";
+  } elsif (@at_max) {
+    $via = "@at_max";
+  } else {
+    $via = "~";
+  }
+
   printf "%-35s (%8s) -> (%8s) via %s\n",
     shorten($dist),
     maybe_color($perl_required{$dist}),
     maybe_color($max),
-    (@at_max ? "@at_max" : '~');
+    $via;
 }
