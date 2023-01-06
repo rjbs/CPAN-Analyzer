@@ -15,12 +15,14 @@ my ($opt, $usage) = describe_options(
   [ 'cpan=s',   "path to a CPAN mirror" ],
   [ 'cpanid=s', "if no dists given, all dists for this author" ],
   [ 'only-bumpable|B', 'only show things we can bump up'  ],
-  [ 'minimum-interesting|n=s', q{skip anything that can't reach this version (use v5.x format)} ],
+  [ 'minimum-target|n=s', q{skip anything that can't reach this version (use v5.x format)},
+                          { implies => 'only_bumpable' } ],
+  [],
   [ 'debug',    "make more noise" ],
 );
 
-my $min = $opt->minimum_interesting
-        ? version->parse($opt->minimum_interesting)
+my $min = $opt->minimum_target
+        ? version->parse($opt->minimum_target)
         : undef;
 
 if (@ARGV > 1 && $opt->cpanid) {
