@@ -44,7 +44,17 @@ unless (@queue) {
     "$ENV{HOME}/minicpan/modules/02packages.details.txt.gz"
   );
 
-  my $cpanid = uc $opt->cpanid;
+  my $cpanid = $opt->cpanid;
+  unless ($cpanid) {
+    die "no --cpanid provided, and \$USER environment variable not set\n"
+      unless $ENV{USER};
+
+    warn "no --cpanid provided, so using $ENV{USER}\n";
+    $cpanid = $ENV{USER};
+  }
+
+  $cpanid = uc $cpanid;
+
   my @dists = grep {; $_->cpanid eq $cpanid } $index->latest_distributions;
   @queue = sort map {; $_->dist } @dists;
 }
