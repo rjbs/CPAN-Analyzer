@@ -17,6 +17,7 @@ my ($opt, $usage) = describe_options(
   [ 'only-bumpable|B', 'only show things we can bump up'  ],
   [ 'minimum-target|n=s', q{skip anything that can't reach this version (use v5.x format)},
                           { implies => 'only_bumpable' } ],
+  [ 'include-orphans', 'without this, anything with an ADOPTME permission is ignored' ],
   [],
   [ 'debug',    "make more noise" ],
 );
@@ -80,6 +81,12 @@ my sub maybe_color ($version) {
 }
 
 for my $dist (@queue) {
+  my @maints = $ma->maintainers($dist);
+
+  unless ($opt->include_orphans) {
+    next if grep {; $_ eq 'ADOPTME' } $ma->maintainers($dist);
+  }
+
   my @already = do {
     local $ENV{ANSI_COLORS_DISABLED} = 1;
     `$^X bin/dep-tree $db_file $dist --once`;
