@@ -4,6 +4,7 @@ package Metanalysis;
 use Moose;
 
 use DBI;
+use Path::Tiny;
 use version ();
 
 has db_file => (
@@ -60,6 +61,64 @@ sub _build_perl_for_dist ($self) {
   }
 
   return \%perl_required;
+}
+
+has cpan_root => (
+  is    => 'ro',
+  lazy  => 1,
+  default => sub ($self) {
+    confess "no cpan_root provided and no \$HOME" unless $ENV{HOME};
+
+    my $root = "$ENV{HOME}/minicpan";
+
+    confess "no cpan_root provided and no $root"
+      unless -d $root;
+
+    return $root;
+  },
+);
+
+# Okay, so this is a bit mehhhh because what we care about is dist permissions,
+# which aren't exactly a thing, but I *think* that for some years now, any dist
+# X-Z will have a matching X::Z module existing for it.  Thanks, younger rjbs!
+has module_permissions => (
+  lazy => 1,
+  reader  => '_perms',
+  default => sub ($self) {
+    my $root  = path($self->cpan_root);
+    my $perms = $root->child(qw( modules 06perms.txt ));
+
+    my @perms_lines = $perms->lines;
+    chomp @perms_lines;
+
+    my %perm;
+    for my $line (@perms_lines) {
+      next unless $line =~ /,[a-z]\z/;
+      my ($pm, $owner, $type) = split /,/, $line;
+
+      $perm{$pm}{$owner} = $type;
+    }
+
+    \%perm;
+  }
+);
+
+sub first_come ($self, $dist) {
+  my $module = $dist =~ s/-/::/gr;
+  my $perms = $self->_perms->{$module};
+
+  return unless $perms;
+
+  my ($first) = grep {; $perms->{$_} eq 'f' } keys $perms->{$module}->%*;
+  return $first;
+}
+
+sub maintainers ($self, $dist) {
+  my $module = $dist =~ s/-/::/gr;
+  my $perms = $self->_perms->{$module};
+
+  return unless $perms;
+  return keys %$perms;
 }
 
 sub maximum_perl_required_among ($self, $dists) {
