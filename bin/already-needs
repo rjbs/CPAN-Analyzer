@@ -17,7 +17,7 @@ my ($opt, $usage) = describe_options(
   [ 'only-bumpable|B', 'only show things we can bump up'  ],
   [ 'minimum-target|n=s', q{skip anything that can't reach this version (use v5.x format)},
                           { implies => 'only_bumpable' } ],
-  [ 'include-orphans', 'without this, anything with an ADOPTME permission is ignored' ],
+  [ 'include-orphans', 'ignore dists with ADOPTME or without rights for cpanid user' ],
   [],
   [ 'debug',    "make more noise" ],
 );
@@ -35,6 +35,7 @@ $usage->die unless @ARGV;
 my $db_file = shift @ARGV;
 my $ma = Metanalysis->new({ db_file => $db_file });
 my $dbh = $ma->dbh;
+my $cpanid;
 
 my @queue = @ARGV;
 
@@ -47,7 +48,7 @@ unless (@queue) {
     "$ENV{HOME}/minicpan/modules/02packages.details.txt.gz"
   );
 
-  my $cpanid = $opt->cpanid;
+  $cpanid = $opt->cpanid;
   unless ($cpanid) {
     die "no --cpanid provided, and \$USER environment variable not set\n"
       unless $ENV{USER};
@@ -63,7 +64,8 @@ unless (@queue) {
 }
 
 my sub shorten ($dist_name) {
-  $dist_name =~ s/\ADist-Zilla-Plugin-/D-Z-P-/r;
+  $dist_name =~ s/\ADist-Zilla-Plugin-/D-Z-P-/r
+             =~ s/\AEmail-MIME-Kit-/E-M-K-/r;
 }
 
 my sub maybe_color ($version) {
@@ -85,6 +87,8 @@ for my $dist (@queue) {
 
   unless ($opt->include_orphans) {
     next if grep {; $_ eq 'ADOPTME' } $ma->maintainers($dist);
+
+    next if $cpanid && ! grep {; $_ eq $cpanid } $ma->maintainers($dist);
   }
 
   my @already = do {
