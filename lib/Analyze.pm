@@ -6,7 +6,7 @@ use CPAN::Meta;
 use CPAN::Visitor;
 use Date::Format;
 use DBI;
-use JSON;
+use JSON::XS;
 use Parallel::ForkManager;
 use Parse::CPAN::Meta;
 use Parse::CPAN::Packages::Fast;
@@ -17,7 +17,7 @@ sub analyze_cpan {
   my $cpan_root = $arg->{cpan_root};
   $arg->{work_root} && (local $ENV{TMPDIR} = $arg->{work_root});
 
-  my $JSON = JSON->new;
+  my $JSON = JSON::XS->new;
 
   my @data;
 
