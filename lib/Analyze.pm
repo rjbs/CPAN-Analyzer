@@ -10,6 +10,7 @@ use JSON::XS;
 use Parallel::ForkManager;
 use Parse::CPAN::Meta;
 use Parse::CPAN::Packages::Fast;
+use Path::Tiny;
 
 sub analyze_cpan {
   my ($self, $arg) = @_;
@@ -34,8 +35,11 @@ sub analyze_cpan {
     dist_version,
     cpanid,
     mtime INTEGER,
-    has_meta_yml,
-    has_meta_json,
+    mdatetime,
+    is_tarbomb INTEGER,
+    file_count INTEGER,
+    has_meta_yml INTEGER,
+    has_meta_json INTEGER,
     meta_spec,
     meta_dist_version,
     meta_generator,
@@ -48,7 +52,10 @@ sub analyze_cpan {
     meta_json_error,
     meta_json_backend,
     meta_struct_error,
-    has_dist_ini
+    meta_provides_defined INTEGER,
+    has_makefile_pl INTEGER,
+    has_build_pl INTEGER,
+    has_dist_ini INTEGER
   )");
 
   $dbh->do(
@@ -64,14 +71,16 @@ sub analyze_cpan {
   );
 
   my @cols = qw(
-    distfile dist dist_version cpanid mtime has_meta_yml has_meta_json meta_spec
+    distfile dist dist_version cpanid mtime mdatetime is_tarbomb file_count
+    has_meta_yml has_meta_json meta_spec
     meta_dist_version
     meta_generator
     meta_gen_package meta_gen_version meta_gen_perl
     meta_license
     meta_yml_error meta_yml_backend meta_json_error meta_yml_backend
     meta_struct_error
-    has_dist_ini
+    meta_provides_defined
+    has_makefile_pl has_build_pl has_dist_ini
   );
 
   my %template = map {; $_ => undef } @cols;
@@ -155,17 +164,48 @@ sub process_job {
     my %report = $state->{template}->%*;
     my $dist = $state->{dist_object}{ $job->{distfile} };
 
+    {
+      # If the cwd is the job's tempdir, the tarball was badly behaved.
+      # If the cwd's parent is the job's tempdir, the tarball was nicely behaved.
+      # Otherwise, WTF is going on?
+      my $cwd     = Path::Tiny->cwd;
+      my $job_dir = path($job->{tempdir})->absolute;
+      my $parent  = $cwd->parent->absolute;
+
+      $cwd    =~ s{\A/private}{};
+      $parent =~ s{\A/private}{};
+
+      if ($job_dir eq $cwd) {
+        $report{is_tarbomb} = 1;
+        # die "$job->{distfile} is badly behaved!\n";
+      } elsif ($job_dir eq $parent) {
+        $report{is_tarbomb} = 0;
+        # warn "$job->{distfile} is nicely behaved!\n";
+      } else {
+        $report{is_tarbomb} = 2;
+        # warn "$job->{distfile} is a mystery!\n";
+      }
+    }
+
+    my @files = `find . -type f`;
+    $report{file_count}   = @files;
+
     $report{dist}         = $dist->dist;
     $report{dist_version} = $dist->version;
 
     $report{distfile} = $job->{distfile};
     ($report{cpanid}) = split m{/}, $job->{distfile};
 
-    $report{has_meta_yml}  = -e 'META.yml'  ? 1 : 0;
-    $report{has_meta_json} = -e 'META.json' ? 1 : 0;
-    $report{has_dist_ini}  = -e 'dist.ini'  ? 1 : 0;
+    $report{has_meta_yml}     = -e 'META.yml'     ? 1 : 0;
+    $report{has_meta_json}    = -e 'META.json'    ? 1 : 0;
+    $report{has_makefile_pl}  = -e 'Makefile.PL'  ? 1 : 0;
+    $report{has_build_pl}     = -e 'Build.PL'     ? 1 : 0;
+    $report{has_dist_ini}     = -e 'dist.ini'     ? 1 : 0;
 
-    $report{mtime} = (stat $job->{distpath})[9];
+    $report{meta_provides_defined} = 0;
+
+    $report{mtime}      = (stat $job->{distpath})[9];
+    $report{mdatetime}  = time2str('%Y-%m-%d %X', $report{mtime});
 
     my $json_distmeta;
     my $yaml_distmeta;
@@ -219,6 +259,8 @@ sub process_job {
       };
 
       if ($meta_obj) {
+        $report{meta_provides_defined} = 1 if $meta_obj->provides->%*;
+
         my $prereqs = $meta_obj->effective_prereqs->as_string_hash;
         for my $phase (keys $prereqs->%*) {
           for my $type (keys $prereqs->{$phase}->%*) {
