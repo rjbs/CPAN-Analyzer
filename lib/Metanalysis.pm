@@ -188,5 +188,4 @@ sub recursive_requirements_for ($self, $root, $arg = {}) {
   return keys %seen;
 }
 
-
 1;

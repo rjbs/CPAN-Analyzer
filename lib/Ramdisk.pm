@@ -1,14 +1,13 @@
-use 5.20.0;
-use warnings;
+use 5.36.0;
+
 package Ramdisk;
+
 use Process::Status;
 
-sub new {
-  my ($class, $mb) = @_;
-
+sub new ($class, $size_in_mb) {
   state $i = 1;
 
-  my $dev  = $class->_mk_ramdev($mb);
+  my $dev  = $class->_mk_ramdev($size_in_mb);
   my $type = q{Case-sensitive HFS+};
   my $name = sprintf "ramdisk-%s-%05u-%u", $^T, $$, $i++;
 
@@ -17,7 +16,7 @@ sub new {
 
   my $guts = {
     root => "/Volumes/$name",
-    size => $mb,
+    size => $size_in_mb,
     dev  => $dev,
     pid  => $$,
   };
@@ -25,20 +24,18 @@ sub new {
   return bless $guts, $class;
 }
 
-sub root { $_[0]{root} }
-sub size { $_[0]{size} }
-sub dev  { $_[0]{dev}  }
+sub root ($self) { $self->{root} }
+sub size ($self) { $self->{size} }
+sub dev  ($self) { $self->{dev}  }
 
-sub DESTROY {
-  return unless $$ == $_[0]{pid};
-  system(qw(diskutil eject), $_[0]->dev)
-    and warn "couldn't unmount $_[0]{root}: " . Process::Status->as_string;
+sub DESTROY ($self) {
+  return unless $$ == $self->{pid};
+  system(qw(diskutil eject), $self->dev)
+    and warn "couldn't unmount $self->{root}: " . Process::Status->as_string;
 }
 
-sub _mk_ramdev {
-  my ($class, $mb) = @_;
-
-  my $size_arg = $mb * 2048;
+sub _mk_ramdev ($class, $size_in_mb) {
+  my $size_arg = $size_in_mb * 2048;
   my $dev  = `hdiutil attach -nomount ram://$size_arg`;
 
   chomp $dev;

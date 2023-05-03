@@ -1,22 +1,17 @@
-use 5.20.0;
-use warnings;
-use experimental 'postderef';
+use 5.36.0;
+
 package Aggregate;
 
 use Text::Table;
 
-sub scan_file {
-  my ($self, $filename) = @_;
-
+sub scan_file ($self, $filename) {
   my $method = $filename =~ /\.csv\z/     ? 'scan_csv'
              : $filename =~ /\.sqlite\z/  ? 'scan_db'
              :  die "unknown file type\n";
   my $result = $self->$method($filename);
 }
 
-sub scan_db {
-  my ($self, $filename) = @_;
-
+sub scan_db ($self, $filename) {
   require DBI;
   my $dsn = "dbi:SQLite:dbname=$filename";
   my $dbh = DBI->connect($dsn, undef, undef);
@@ -41,9 +36,7 @@ sub scan_db {
   });
 }
 
-sub scan_csv {
-  my ($self, $filename) = @_;
-
+sub scan_csv ($self, $filename) {
   require Text::CSV_XS;
   my $csv = Text::CSV_XS->new;
   open my $fh, '<:encoding(utf8)', $filename or die "$filename: $!";
@@ -69,9 +62,7 @@ sub scan_csv {
   });
 }
 
-sub _process_iterator {
-  my ($self, $iterator) = @_;
-
+sub _process_iterator ($self, $iterator) {
   my %tool;
 
   while (my $row = $iterator->()) {
@@ -94,9 +85,7 @@ sub _process_iterator {
   return \%tool;
 }
 
-sub aggregate_minorities {
-  my ($self, $input, $min_size) = @_;
-
+sub aggregate_minorities ($self, $input, $min_size) {
   my %minority = (
     cpanid    => {},
     distfiles => [],
