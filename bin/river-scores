@@ -4,22 +4,30 @@ use warnings;
 
 use experimental qw(postderef signatures);
 
+use lib 'lib';
+
 use DBI;
 use Getopt::Long::Descriptive;
+use Metanalysis;
 use Module::CoreList;
-use Term::ANSIColor;
+use Text::Table;
 
 my ($opt, $usage) = describe_options(
   '%c %o DBFILE',
-  [ 'scores!', 'show the scores as well as the name', { default => 1 } ],
-  [ 'modules', 'print module names, not dist names' ],
+  [ 'cpanid=s',     'only print lines for this cpan author' ],
+  [ 'format|o=s@',  'fields to print; options: score, prereqs, dist, cpanid, minperl',
+                    { default => [ qw(prereqs dist) ] } ],
+  [ 'min-score|n=i',  'skip dists with a score lower than this' ],
+  [ 'modules',      'print module names, not dist names' ],
 );
 
-my ($dbfile) = @ARGV;
+my ($db_file) = @ARGV;
 
-$usage->die unless $dbfile;
+$usage->die unless $db_file;
 
-my $dbh = DBI->connect("dbi:SQLite:dbname=$dbfile", undef, undef);
+my $dbh = DBI->connect("dbi:SQLite:dbname=$db_file", undef, undef);
+
+my $ma = Metanalysis->new({ db_file => $db_file });
 
 my %required_as;
 for my $prereq (
@@ -44,10 +52,16 @@ my $sth = $dbh->prepare(
   ORDER BY LOWER(module_dist)",
 );
 
-my $dist_rows = $dbh->selectcol_arrayref('SELECT dist FROM dists');
-my %score;
-for my $dist (@$dist_rows) {
-  $score{$dist} = downstream_count($dist);
+my $dist_rows = $dbh->selectall_arrayref(
+  'SELECT * FROM dists',
+  { Slice => {} },
+);
+
+my %row_for = map {; $_->{dist} => $_ } @$dist_rows;
+
+my %count;
+for my $dist (keys %row_for) {
+  $count{$dist} = downstream_count($dist);
 }
 
 sub display_as ($distname) {
@@ -60,15 +74,31 @@ sub display_as ($distname) {
   return $name;
 }
 
-if ($opt->scores) {
-  for my $dist (sort { $score{$b} <=> $score{$a} } keys %score) {
-    printf "%i %s\n", $score{$dist}, display_as($dist);
-  }
-} else {
-  for my $dist (sort { $score{$b} <=> $score{$a} } keys %score) {
-    say display_as($dist);
-  }
+my $table = Text::Table->new($opt->format->@*);
+
+my %col = (
+  score   => sub ($dist, $prereqs) { length($prereqs) - 1 },
+  prereqs => sub ($dist, $prereqs) { $prereqs },
+  dist    => sub ($dist, $prereqs) { $dist->{dist} },
+  cpanid  => sub ($dist, $prereqs) { $dist->{cpanid} },
+  minperl => sub ($dist, $prereqs) { $ma->perl_for_dist($dist->{dist}) // '~' },
+);
+
+for my $dist (sort { $count{$b} <=> $count{$a} } keys %count) {
+  my $row = $row_for{$dist};
+
+  my $count = $count{$dist};
+
+  last if $opt->min_score && length($count) - 1 < $opt->min_score;
+
+  next if $opt->cpanid && $row->{cpanid} ne uc $opt->cpanid;
+
+  $table->add(
+    map {; $col{$_}->($row, $count{$dist}) } $opt->format->@*
+  );
 }
+
+print $table;
 
 sub downstream_count ($dist) {
   my @dists = _dists_requiring($dist);
