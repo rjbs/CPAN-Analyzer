@@ -1,8 +1,5 @@
 #!/usr/bin/env perl
-use v5.24.0;
-use warnings;
-
-use experimental qw(postderef signatures);
+use v5.36.0;
 
 use lib 'lib';
 

@@ -1,7 +1,5 @@
 #!/usr/bin/env perl
-use 5.20.0;
-use warnings;
-use experimental 'postderef';
+use v5.36.0;
 
 use lib 'lib';
 
