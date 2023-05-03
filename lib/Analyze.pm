@@ -1,7 +1,7 @@
-use 5.20.0;
-use warnings;
+use 5.36.0;
+
 package Analyze;
-use experimental 'postderef';
+
 use CPAN::Meta;
 use CPAN::Visitor;
 use Date::Format;
@@ -12,9 +12,7 @@ use Parse::CPAN::Meta;
 use Parse::CPAN::Packages::Fast;
 use Path::Tiny;
 
-sub analyze_cpan {
-  my ($self, $arg) = @_;
-
+sub analyze_cpan ($self, $arg) {
   my $cpan_root = $arg->{cpan_root};
   $arg->{work_root} && (local $ENV{TMPDIR} = $arg->{work_root});
 
@@ -155,12 +153,8 @@ sub analyze_cpan {
   $pm->wait_all_children;
 }
 
-sub process_job {
-  my ($dbh, $state) = @_;
-
-  return sub {
-    my ($job) = @_;
-
+sub process_job ($dbh, $state) {
+  return sub ($job) {
     my %report = $state->{template}->%*;
     my $dist = $state->{dist_object}{ $job->{distfile} };
 
