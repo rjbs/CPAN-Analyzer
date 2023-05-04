@@ -70,11 +70,12 @@ sub _dists_required_by ($dist, $include_develop) {
 
 my %PATH_FOR;
 sub _paths_between ($dist, $target, $top = 1, $path = []) {
-  return $PATH_FOR{ $dist, $target } if exists $PATH_FOR{ $dist, $target };
+  my $key = join $;, $dist, $target;
+  return $PATH_FOR{$key} if exists $PATH_FOR{$key};
 
-  return $PATH_FOR{ $dist, $target } = $target if $dist eq $target;
-  return $PATH_FOR{ $dist, $target } = undef if grep {; $_ eq $dist } @{ $opt->prune || [] };
-  return $PATH_FOR{ $dist, $target } = undef unless my @prereqs = _dists_required_by($dist, $top && $opt->include_develop);
+  return $PATH_FOR{$key} = $target if $dist eq $target;
+  return $PATH_FOR{$key} = undef if grep {; $_ eq $dist } @{ $opt->prune || [] };
+  return $PATH_FOR{$key} = undef unless my @prereqs = _dists_required_by($dist, $top && $opt->include_develop);
 
   my %in_path = map {; $_ => 1 } @$path;
 
@@ -84,7 +85,7 @@ sub _paths_between ($dist, $target, $top = 1, $path = []) {
     $return{$prereq} = $paths if $paths;
   }
 
-  return $PATH_FOR{ $dist, $target } = keys %return ? \%return : undef;
+  return $PATH_FOR{$key} = keys %return ? \%return : undef;
 }
 
 sub print_tree {
@@ -115,7 +116,8 @@ sub print_dot ($start, $struct, $arg = {}) {
   my $print_tree = sub ($start, $struct) {
     return unless ref $struct;
     for my $dist (keys %$struct) {
-      print qq{"$start" -> "$dist";\n} unless $seen{$start, $dist}++;
+      my $key = join $;, $start, $dist;
+      print qq{"$start" -> "$dist";\n} unless $seen{$key}++;
       __SUB__->($dist, $struct->{$dist});
     }
   };
