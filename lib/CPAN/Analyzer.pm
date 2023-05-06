@@ -1,6 +1,6 @@
 use 5.36.0;
 
-package Analyze;
+package CPAN::Analyzer;
 
 use CPAN::Meta;
 use CPAN::Visitor;
@@ -11,6 +11,11 @@ use Parallel::ForkManager;
 use Parse::CPAN::Meta;
 use Parse::CPAN::Packages::Fast;
 use Path::Tiny;
+
+sub new ($class) {
+  Carp::croak("can't call new on an instance") if ref $class;
+  return bless {}, $class;
+}
 
 sub analyze_cpan ($self, $arg) {
   my $cpan_root = $arg->{cpan_root};
