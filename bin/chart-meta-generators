@@ -5,7 +5,7 @@ use lib 'lib';
 
 use Data::Dumper;
 
-use Aggregate;
+use CPAN::Analyzer::AggregateUtils;
 use Chart::Clicker;
 use Chart::Clicker::Axis::DateTime;
 use Chart::Clicker::Data::Series;
@@ -22,8 +22,8 @@ for my $file (glob('*.csv'), glob('*.sqlite')) {
 
   (my $key = $date) =~ s/-//g;
 
-  my $result = Aggregate->scan_file($file);
-  Aggregate->aggregate_minorities($result, 100);
+  my $result = CPAN::Analyzer::AggregateUtils->scan_file($file);
+  CPAN::Analyzer::AggregateUtils->aggregate_minorities($result, 100);
 
   push @keys, $key;
 

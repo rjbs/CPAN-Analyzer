@@ -1,15 +1,6 @@
 use 5.36.0;
 
-package Aggregate;
-
-use Text::Table;
-
-sub scan_file ($self, $filename) {
-  my $method = $filename =~ /\.csv\z/     ? 'scan_csv'
-             : $filename =~ /\.sqlite\z/  ? 'scan_db'
-             :  die "unknown file type\n";
-  my $result = $self->$method($filename);
-}
+package CPAN::Analyzer::AggregateUtils;
 
 sub scan_db ($self, $filename) {
   require DBI;
@@ -32,32 +23,6 @@ sub scan_db ($self, $filename) {
     return unless my $row = $sth->fetchrow_hashref;
     my %hash;
     @hash{ @cols } = $row->@{ @cols };
-    return \%hash;
-  });
-}
-
-sub scan_csv ($self, $filename) {
-  require Text::CSV_XS;
-  my $csv = Text::CSV_XS->new;
-  open my $fh, '<:encoding(utf8)', $filename or die "$filename: $!";
-
-  my @cols = qw(
-    distfile
-    cpanid
-    has_meta_yml has_meta_json meta_spec
-    meta_generator meta_gen_package meta_gen_version meta_license
-    meta_error
-    has_dist_ini
-  );
-
-  my %tool;
-
-  { my $headers = $csv->getline($fh) }
-
-  return $self->_process_iterator(sub {
-    return unless my $row = $csv->getline($fh);
-    my %hash;
-    @hash{ @cols } = @$row;
     return \%hash;
   });
 }
