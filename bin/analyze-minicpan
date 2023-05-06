@@ -4,8 +4,8 @@ use v5.36.0;
 use lib 'lib';
 
 use CPAN::Analyzer;
+use CPAN::Analyzer::Ramdisk;
 use Getopt::Long::Descriptive;
-use Ramdisk;
 
 my ($opt, $desc) = describe_options(
   '%c %o',
@@ -17,7 +17,7 @@ die "can't find your minicpan!\n"
 
 my $cpan_root = "$ENV{HOME}/minicpan";
 
-my $ramdisk = $opt->ramdisk ? Ramdisk->new(1024) : undef;
+my $ramdisk = $opt->ramdisk ? CPAN::Analyzer::Ramdisk->new(1024) : undef;
 
 CPAN::Analyzer->new->analyze_cpan({
   cpan_root => $cpan_root,

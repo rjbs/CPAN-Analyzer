@@ -1,6 +1,6 @@
 use 5.36.0;
 
-package Ramdisk;
+package CPAN::Analyzer::Ramdisk;
 
 use Process::Status;
 
