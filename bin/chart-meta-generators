@@ -17,12 +17,16 @@ my $chart = Chart::Clicker->new; # build the chart
 my @keys;
 my %series;
 
+if ($ARGV[0]) {
+  chdir $ARGV[0] or die "can't chdir to $ARGV[0]: $!";
+}
+
 for my $file (glob('*.csv'), glob('*.sqlite')) {
   my ($date) = $file =~ /(\d{4}.+?)\.(?:csv|sqlite)/;
 
   (my $key = $date) =~ s/-//g;
 
-  my $result = CPAN::Analyzer::AggregateUtils->scan_file($file);
+  my $result = CPAN::Analyzer::AggregateUtils->scan_db_file($file);
   CPAN::Analyzer::AggregateUtils->aggregate_minorities($result, 100);
 
   push @keys, $key;

@@ -2,7 +2,7 @@ use 5.36.0;
 
 package CPAN::Analyzer::AggregateUtils;
 
-sub scan_db ($self, $filename) {
+sub scan_db_file ($self, $filename) {
   require DBI;
   my $dsn = "dbi:SQLite:dbname=$filename";
   my $dbh = DBI->connect($dsn, undef, undef);
